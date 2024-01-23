@@ -213,7 +213,7 @@ class Segment:
         self.tags = TagParser(self.lines).tags
         self._chk_aes()
         self._extinf()
-     #   self._scte35()
+        self._scte35()
         if self.first:
             self._get_pts_start()
             if self.pts:
@@ -238,20 +238,26 @@ class Segment:
     def as_stanza(self):
         """
         as_stanza returns segment data formated for m3u8.
-        
+
         """
-        bumper = ' '
         stanza = []
         presort = list(self.tags.keys())
         presort.sort()
-        
-        stanza=[f'{x}:{self.tags[x]}' for x in presort]
+        for x in presort:
+            kay =x
+            vee = self.tags[x]
+            if isinstance(vee,dict):
+                tmp =[]
+                for k,v in vee.items():
+                    tmp.append(f'{k}={v}')
+                vee =','.join(tmp)
+            stanza.append(f'{kay}:{vee}' )
         stanza =[x.replace(':None','').replace(':{}','') for x in stanza]
         stanza.append(self.media)
         return stanza
-    
 
-class UMZZnp:
+
+class NP:
     """
    Ultra Mega Zoom Zoom no parse edition.
     """
@@ -276,7 +282,7 @@ class UMZZnp:
         self.first = True
         self.scte35 = SCTE35()
         self.last_sidelines= None
- 
+
     def _parse_args(self):
         """
         _parse_args parse command line args
@@ -398,6 +404,7 @@ class UMZZnp:
             self._chk_sidecar_cues(segment)
           #  if self.scte35.cue_time:
             self._add_cue_tag(segment)
+            segment.add_tag('# start', f' {segment.start}  cue time: {self.scte35.cue_time}')
             if segment.tmp:
                 os.unlink(segment.tmp)
                 del segment.tmp
@@ -426,14 +433,14 @@ class UMZZnp:
     def _parse_header(self, line):
         splitline = line.split(":", 1)
         if splitline[0] in HEADER_TAGS:
-            val = ""
+            val = None
             tag = splitline[0]
             if len(splitline) > 1:
                 val = splitline[1]
                 try:
                     val = atoif(val)
                 except:
-                    pass
+                    val = None
             self.headers[tag] = val
             return True
         return False
@@ -478,8 +485,12 @@ class UMZZnp:
                     if not self._parse_line(line):
                         break
                 with open(self.outfile,"w",encoding="utf8") as npm3u8:
-                  #  npm3u8.write(self.headers)
-                    
+                    print(self.headers)
+                    for k,v in self.headers.items():
+                        if v is None:
+                            npm3u8.write(f'{k}\n')
+                        else:
+                            npm3u8.write(f'{k}:{v}\n')
                     for segment in segments:
                         stanza = segment.as_stanza()
                         _=[npm3u8.write(j+'\n') for j in stanza]
@@ -494,6 +505,8 @@ class UMZZnp:
         the sidecar file and loads them into X9K3.sidecar
         """
         if self.sidecar_file:
+            if not self.start:
+                return
             with reader(self.sidecar_file) as sidefile:
                 sidelines = sidefile.readlines()
                 if sidelines == self.last_sidelines:
@@ -542,9 +555,7 @@ class UMZZnp:
                         self.scte35.cue = Cue(splice_cue)
                         self.scte35.cue.decode()
                         print(f'{self.scte35.cue.command.get()}')
-                            #self.scte35.cue.show()
                         self._chk_cue_time()
-                            #self._chk_splice_point()
 
     def _discontinuity_seq_plus_one(self):
         if segments:
@@ -558,7 +569,7 @@ class UMZZnp:
         """
         _add_discontinuity adds a discontinuity tag.
         """
- 
+
         segment.add_tag("#EXT-X-DISCONTINUITY", None)
 
     def _add_cue_tag(self, segment):
@@ -583,7 +594,7 @@ class UMZZnp:
             print(f"{segment.media}   {kay} {vee}")
             print(segment.tags)
 
-                  
+
 
     def _chk_cue_time(self):
         if self.scte35.cue:
@@ -616,7 +627,7 @@ class UMZZnp:
 
 
 def cli():
-    fu = UMZZnp()
+    fu = NP()
     fu._parse_args()
     fu.decode()
 
