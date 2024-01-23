@@ -40,8 +40,9 @@ and keep CPU usage to a minimum.
 
 <br>
 
-> I can do that.
-
+ I can do that.
+<br>
+<br>
 
 ### the game plan.
 
@@ -71,7 +72,8 @@ and keep CPU usage to a minimum.
  When that works, I'll merge in ABR process spawning, which is already done as well.
 I expect to have a test first release this week.
 
-__Currently__, I am rounding SCTE-35 Cues to the nearest segment,
+__Currently__, I am rounding SCTE-35 Cues to the nearest segment, sort of, but it works 
+better than just rounding.
 with a 6 second segments noparse is averaging about +/-1.5 seconds off,
 with two second segments, it's less than +/- 1 second off.
 
