@@ -42,6 +42,8 @@ and keep CPU usage to a minimum.
 
  I can do that.
 <br>
+![image](https://github.com/futzu/np/assets/52701496/7c445f4a-4a34-4839-8293-ae2cb36137b3)
+
 <br>
 
 ### the game plan.
