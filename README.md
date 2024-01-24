@@ -43,6 +43,7 @@ and keep CPU usage to a minimum.
  I can do that.
 <br>
 ![image](https://github.com/futzu/np/assets/52701496/7c445f4a-4a34-4839-8293-ae2cb36137b3)
+![image](https://github.com/futzu/np/assets/52701496/e60943c7-3bd5-469e-994f-4f32f0550ee9)
 
 <br>
 
