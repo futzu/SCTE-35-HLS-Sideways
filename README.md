@@ -24,9 +24,7 @@ hate that.
 that distills down to:
 <br>
 
-Inject SCTE-35 from a sidecar file, 
-<br>
-on the fly,
+Inject SCTE-35 from a sidecar file, ,
 <br>
 into live ABR  HLS streams,
 <br>
