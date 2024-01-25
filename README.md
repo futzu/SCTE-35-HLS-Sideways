@@ -45,7 +45,7 @@ Everything is working,  except splitting segments for SCTE-35, I haven't merged 
 
 __Currently__, I am  doing 'enhanced' rounding of SCTE-35 Cue splice points to the nearest segment.
 * with a __6 second__ segments __np__ is averaging about __+/-1.5 seconds__ off,
-* with __2 second__ segments, __np__ is less than __+/- 1 second__ off.
+* with __2 second__ segments, __np__ is averaging less than __+/- 1 second__ off.
 
 
 <br>
