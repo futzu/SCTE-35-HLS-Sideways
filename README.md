@@ -3,37 +3,12 @@ no parse  HLS SCTE-35 Injection via sidecar file
 
 # There has got to be a better way.
 
-### Here are the facts as I see them.
-
-
-* For some time now, I have been trying to figure out 
-an effective way to inject SCTE-35 into HLS. 
-
-* x9k3, is pretty cool, but scaling it to adaptive bitrate 
-has been challenging. 
-
-* sidercar SCTE-35, It was my idea, and I stand by it. 
-
-* I noticed x9k3 now has a lot of options, and I really 
-hate that.
-
-* I like how umzz works, spawning a process for each rendition.
-
-* I hate that umzz sucks over network if you don't have fat pipes.
-
-that distills down to:
 <br>
 
-Inject SCTE-35 from a sidecar file, ,
-<br>
+Inject SCTE-35 from a sidecar file, on the fly, 
 into live ABR  HLS streams,
 <br>
-in real time,
-<br>
-over a network,
-<br>
-make it easy,
-<br>
+over a network, make it easy, 
 and keep CPU usage to a minimum.
 
 <br>
