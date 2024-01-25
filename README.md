@@ -20,7 +20,7 @@ and keep CPU usage to a minimum.
 
 * read the master.m3u8 and copy it locally.
     * change the rendition URIs to the new local index.m3u8 files.
-* load SCTE-35 from a sidecar file for all renditioons, just like umzz.
+* load SCTE-35 from a sidecar file for all renditions, just like umzz.
 * spawn a process for each rendition and do the following:
   *  throttle for live output, just like x9k3.
   * read the index.m3u8 all HLS options defined by the index.m3u8.
