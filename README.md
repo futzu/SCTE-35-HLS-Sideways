@@ -52,7 +52,7 @@ __Currently__, I am  doing 'enhanced' rounding of SCTE-35 Cue splice points to t
 
 ![image](https://github.com/futzu/np/assets/52701496/b4c2359c-8bff-4801-9533-90cd4bd7a065)
 <br>
-#### Multiprocessing siddcasr SCTE-35 is working. 
+#### Multiprocessing siddcar SCTE-35 is working. 
 * np uses 1 sidecar and pushes the SCTE-35 to each rendition process.
 * SCTE-35 can be written to the sidecar file while __np__ is running.
 * notice how all renditions are in sync.
