@@ -4,7 +4,6 @@ np.py
 import argparse
 from collections import deque
 import json
-import gc
 import os
 import sys
 import time
@@ -27,7 +26,7 @@ from new_reader import reader
 from iframes import IFramer
 from x9k3 import X9K3, SCTE35
 from umzz import UMZZ, do
-import cProfile
+from splitstream import SplitStream
 
 """
 Odd number versions are releases.
@@ -143,7 +142,7 @@ class Segment:
     def _get_pts_start(self):
         iframer = IFramer(shush=True)
         pts_start = iframer.first(self.media)
-        print(pts_start)
+     #   print(pts_start)
         self.pts = round(pts_start, 6)
         self.start = self.pts
 
@@ -204,7 +203,6 @@ class Segment:
             try:
                 tf = threefive.Cue(self.cue)
                 tf.decode()
-                tf.show()
                 self.cue_data = tf.get()
             except:
                 pass
@@ -345,16 +343,6 @@ class NP:
             head = head + sep
         return f"{head}{tail}"
 
-    def _is_master(self, line):
-        playlist = False
-        for this in ["STREAM-INF", "EXT-X-MEDIA", "#EXT-X-I-FRAME-STREAM-INF"]:
-            if this in line:
-                self.master = True
-                self.reload = False
-                if "URI" in line:
-                    playlist = line.split('URI="')[1].split('"')[0]
-        return playlist
-
     def _set_times(self, segment):
         if not self.start:
             self.start = segment.start
@@ -365,7 +353,17 @@ class NP:
         self.next_expected += round(segment.duration, 6)
         self.hls_time += segment.duration
 
-    def _add_media(self, media):
+    def _add_segment_tags(self,segment):
+        self._chk_sidecar_cues(segment)
+        self._add_cue_tag(segment)
+        segment.add_tag("# start", f" {segment.start}")
+        if segment.tmp:
+            os.unlink(segment.tmp)
+            del segment.tmp
+        seg = segment.relative_uri.rsplit("/", 1)[-1]
+        print(f"media: {seg}\tstart: {segment.start}\tduration: {segment.duration}")
+
+    def _pop(self, media):
         popped = None
         if media not in media_list:
             media_list.append(media)
@@ -375,20 +373,43 @@ class NP:
             while len(segments) > self.window_size:
                 popped = segments.popleft()
                 del popped
+
+    def _add_media(self, media):
             self.scte35.chk_cue_state()
             self.scte35.mk_cue_state()
             segment = Segment(
                 self.chunk, media, self.start, self.base_uri, first=self.first
             )
             segment.decode()
-            self._chk_sidecar_cues(segment)
-            self._add_cue_tag(segment)
-            segment.add_tag("# start", f" {segment.start}")
-            if segment.tmp:
-                os.unlink(segment.tmp)
-                del segment.tmp
-            seg = segment.relative_uri.rsplit("/", 1)[-1]
-            print(f"media: {seg}\tstart: {segment.start}\tduration: {segment.duration}")
+            if self.scte35.cue_time:
+                if (segment.start ) < self.scte35.cue_time < (segment.end):
+                    print("SPLIT")
+                    self.chunk = []
+                    stream=SplitStream()
+                    splice_point, a_name, b_name = stream.split_at(segment.media,self.scte35.cue_time)
+                    a_chunk=[f'#EXTINF:{round(self.scte35.cue_time - segment.start,6)}']
+                    a_media =self.mk_uri(self.args.output_dir, a_name)
+                    a_start = segment.start
+                    a_segment = Segment(a_chunk,a_media,a_start,self.args.output_dir,self.first)
+                    a_segment.decode()
+                    self._pop(a_media)
+                    self._add_segment_tags(a_segment)
+                    self.add_segment(a_segment)
+                    self.chunk=[]
+                    b_chunk=[f'#EXTINF:{round(segment.end - self.scte35.cue_time,6)}']
+                    b_media =self.mk_uri(self.args.output_dir, b_name)
+                    b_start=self.scte35.cue_time
+                    b_segment = Segment(b_chunk,b_media,b_start,self.args.output_dir,self.first)
+                    b_segment.decode()
+                    self._pop(b_media)
+                    self._add_segment_tags(b_segment)
+                    self.add_segment(b_segment)
+                    return
+            self._pop(segment.media)
+            self._add_segment_tags(segment)
+            self.add_segment(segment)
+
+    def add_segment(self,segment):
             segments.append(segment)
             self._set_times(segment)
             self.first = False
@@ -397,12 +418,6 @@ class NP:
 
     def _do_media(self, line):
         media = line
-        if self.master is None:
-            print(f"SELF.MASTER is {self.master}")
-            playlist = self._is_master(line)
-            self.master = True
-            if playlist:
-                media = playlist
         if self.base_uri not in line:
             if "http" not in line:
                 media = self.base_uri + media
@@ -424,20 +439,37 @@ class NP:
             return True
         return False
 
+    def _endlist_chk(self,line):
+        """
+        _endlist_chk checks for
+        #EXT-X-ENDLIST tags
+        """
+        if "ENDLIST" in line:
+            self.reload = False
+
+    def _disco_chk(self,line):
+        """
+        _disco_chk sets self.first when it sees a segment
+        with a discontinuity tag.
+
+        setting self.first causes np to
+        parse a segment for pts.
+        """
+        if "#EXT-X-DISCONTINUITY" in line:
+            self.first = True
+
+
     def _parse_line(self, line):
         if not line:
             return False
         line = self._clean_line(line)
-        if "ENDLIST" in line:
-            self.reload = False
+        self._endlist_chk(line)
         if not self._parse_header(line):
-            if "DISCONTINUITY" in line:
-                self.first = True
+            self._disco_chk(line)
             self.chunk.append(line)
             if line[0] != "#":
                 if len(line):
                     self._do_media(line)
-                    gc.collect()
         return True
 
     def _get_window_size(self, m3u8_lines):
@@ -445,34 +477,36 @@ class NP:
 
     def decode(self):
         self._apply_args()
-        gc.enable()
-        if self.desegment and os.path.exists(self.outfile):
-            os.unlink(self.outfile)
         if self.m3u8:
             based = self.m3u8.rsplit("/", 1)
             if len(based) > 1:
                 self.base_uri = f"{based[0]}/"
         while self.reload:
-            with reader(self.m3u8) as self.manifest:
-                m3u8_lines = self.manifest.readlines()
-                if self.first:
-                    self._get_window_size(m3u8_lines)
-                for line in m3u8_lines:
-                    if not self._parse_line(line):
-                        break
-                out = self.mk_uri(self.output, self.outfile)
-                with open(out, "w", encoding="utf8") as npm3u8:
-                    for k, v in self.headers.items():
-                        if v is None:
-                            npm3u8.write(f"{k}\n")
-                        else:
-                            npm3u8.write(f"{k}:{v}\n")
-                    for segment in segments:
-                        stanza = segment.as_stanza()
-                        _ = [npm3u8.write(j + "\n") for j in stanza]
-                if self.reload == True:
-                    if "#EXT-X-TARGETDURATION" in self.headers:
-                        time.sleep(self.headers["#EXT-X-TARGETDURATION"] - 2)
+            self.read_m3u8()
+            self.write_m3u8()
+
+    def read_m3u8(self):
+        with reader(self.m3u8) as self.manifest:
+            m3u8_lines = self.manifest.readlines()
+            if self.first:
+                self._get_window_size(m3u8_lines)
+            for line in m3u8_lines:
+                if not self._parse_line(line):
+                    break
+
+    def write_m3u8(self):
+        out = self.mk_uri(self.output, self.outfile)
+        with open(out, "w", encoding="utf8") as npm3u8:
+            for k, v in self.headers.items():
+                if v is None:
+                    npm3u8.write(f"{k}\n")
+                else:
+                    npm3u8.write(f"{k}:{v}\n")
+            for segment in segments:
+                stanza = segment.as_stanza()
+                _ = [npm3u8.write(j + "\n") for j in stanza]
+            if "#EXT-X-TARGETDURATION" in self.headers:
+                time.sleep(self.headers["#EXT-X-TARGETDURATION"] - 2)
 
     def load_sidecar(self):
         """
@@ -502,7 +536,6 @@ class NP:
         """
         add2sidecar add insert_pts,cue to the deque
         """
-        print(line)
         insert_pts, cue = line.split(",", 1)
         insert_pts = float(insert_pts)
         if [insert_pts, cue] not in self.sidecar:
@@ -522,26 +555,22 @@ class NP:
                 if segment.start:
                     half = segment.duration / 2
                 if splice_pts:
-                    if (segment.start - half) <= splice_pts <= (segment.start + half):
+                    if (segment.start ) < splice_pts < (segment.end):
                         self.sidecar.remove(s)
                         self.scte35.cue = Cue(splice_cue)
                         self.scte35.cue.decode()
                         print(f"{self.scte35.cue.command.name}")
                         self._chk_cue_time()
 
-    def _discontinuity_seq_plus_one(self):
-        if segments:
-            if "#EXT-X-DISCONTINUITY" in segments[0].tags:
-                if len(segments) >= self.window.size:
-                    self.discontinuity_sequence += 1
-            if "#EXT-X-DISCONTINUITY" in segments[-1].tags:
-                self.first = True
+
+    def _disco_seq_plus_one(self):
+        if "#EXT-X-DISCONTINUITY" in segments[0].tags:
+            self.discontinuity_sequence += 1
 
     def _add_discontinuity(self, segment):
         """
         _add_discontinuity adds a discontinuity tag.
         """
-
         segment.add_tag("#EXT-X-DISCONTINUITY", None)
 
     def _add_cue_tag(self, segment):
@@ -554,7 +583,7 @@ class NP:
                 self.scte35.break_timer = None
                 self.scte35.cue_state = "IN"
         tag = self.scte35.mk_cue_tag()
-        print(tag)
+     #   print(tag)
         if tag:
             if self.scte35.cue_state in ["OUT", "IN"]:
                 self._add_discontinuity(segment)
@@ -563,8 +592,8 @@ class NP:
             if ":" in tag:
                 kay, vee = tag.split(":", 1)
             segment.add_tag(kay, vee)
-            print(f"{segment.media}   {kay} {vee}")
-            print(segment.tags)
+          #  print(f"{segment.media}   {kay} {vee}")
+           # print(segment.tags)
 
     def _chk_cue_time(self):
         if self.scte35.cue:
@@ -672,7 +701,7 @@ def do(args):
     window_size=5,
 
     """
-    fu = M3uFu()
+    fu = M3uFu(shush=True)
     if not args.input:
         print("input source required (Set args.input)")
         sys.exit()
