@@ -41,20 +41,6 @@ and keep CPU usage to a minimum.
 <br>
 
  I can do that.
-<br>
-
-![image](https://github.com/futzu/np/assets/52701496/b4c2359c-8bff-4801-9533-90cd4bd7a065)
-<br>
-#### Multiprocessing siddcasr SCTE-35 is working. 
-* np uses 1 sidecar and pushes the SCTE-35 to each rendition process.
-* SCTE-35 can be written to the sidecar file while __np__ is running.
-* notice how all renditions are in sync.
-<br>
-![image](https://github.com/futzu/np/assets/52701496/797bcc57-4ee3-4876-8d63-79e834b3092f)
-
-
-
-<br>
 
 ### the game plan.
 
@@ -78,18 +64,33 @@ and keep CPU usage to a minimum.
   * replace the original segment with the 2 local split segments in the new index.m3u8.
   *  add CONT cue tags to the manifests as needed, but don't parse any other segment until you have a CUE-IN event.
 
+
+### Current np state:
+
 ### I've got most of it done, here's what's working.
- I have everything working on a single rendition except the segment splitter.
- I have the segment splitter done, I am merging it in today.  
- When that works, I'll merge in ABR process spawning, which is already done as well.
-I expect to have a test first release this week.
+Everything is working,  except splitting segments for SCTE-35, I haven't merged in in yet.
 
-__Currently__, I am rounding SCTE-35 Cues to the nearest segment, sort of, but it works 
-better than just rounding.
-with a 6 second segments noparse is averaging about +/-1.5 seconds off,
-with two second segments, it's less than +/- 1 second off.
+__Currently__, I am  doing 'enhanced' rounding of SCTE-35 Cue splice points to the nearest segment.
+with a __6 second__ segments __np__ is averaging about __+/-1.5 seconds__ off,
+with __2 second__ segments, __np__ is less than __+/- 1 second__ off.
 
 
+<br>
+
+![image](https://github.com/futzu/np/assets/52701496/b4c2359c-8bff-4801-9533-90cd4bd7a065)
+<br>
+#### Multiprocessing siddcasr SCTE-35 is working. 
+* np uses 1 sidecar and pushes the SCTE-35 to each rendition process.
+* SCTE-35 can be written to the sidecar file while __np__ is running.
+* notice how all renditions are in sync.
+<br>
+
+
+![image](https://github.com/futzu/np/assets/52701496/797bcc57-4ee3-4876-8d63-79e834b3092f)
+
+
+
+<br>
 
 
 
