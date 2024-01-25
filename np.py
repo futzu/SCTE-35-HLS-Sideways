@@ -1,5 +1,5 @@
 """
-noparse.py
+np.py
 """
 import argparse
 from collections import deque
@@ -10,12 +10,23 @@ import sys
 import time
 import pyaes
 from operator import itemgetter
-from m3ufu import AESDecrypt,TagParser, HEADER_TAGS, BASIC_TAGS , MULTI_TAGS , MEDIA_TAGS
+import multiprocessing as mp
+
+from m3ufu import (
+    M3uFu,
+    AESDecrypt,
+    TagParser,
+    HEADER_TAGS,
+    BASIC_TAGS,
+    MULTI_TAGS,
+    MEDIA_TAGS,
+)
 import threefive
 from threefive import Cue
 from new_reader import reader
 from iframes import IFramer
 from x9k3 import X9K3, SCTE35
+from umzz import UMZZ, do
 import cProfile
 
 """
@@ -29,8 +40,7 @@ version you have installed.
 
 MAJOR = "0"
 MINOR = "0"
-MAINTAINENCE = "03"
-
+MAINTAINENCE = "05"
 
 
 ON = "\033[1m"
@@ -44,11 +54,13 @@ ROLLOVER = 8589934591
 media_list = deque()
 segments = deque()
 
+
 def version():
     """
     version prints the m3ufu version as a string
     """
     return f"{MAJOR}.{MINOR}.{MAINTAINENCE}"
+
 
 def atoif(value):
     """
@@ -84,11 +96,10 @@ class Segment:
         self.tags = {}
         self.tmp = None
         self.base_uri = base_uri
-        self.relative_uri = media_uri.replace(base_uri,'')
+        self.relative_uri = media_uri.replace(base_uri, "")
         self.last_iv = None
         self.last_key_uri = None
-        self.debug = False
-        self.first =first
+        self.first = first
 
     def __repr__(self):
         return str(self.__dict__)
@@ -111,7 +122,14 @@ class Segment:
         """
         _kv_clean removes items from a dict if the value is None
         """
-        data ={"media":self.media, "start":self.start,"end":self.end," duration":self.duration, "tags":self.tags,"first":self.first}
+        data = {
+            "media": self.media,
+            "start": self.start,
+            "end": self.end,
+            " duration": self.duration,
+            "tags": self.tags,
+            "first": self.first,
+        }
 
         def b2l(val):
             if isinstance(val, (list)):
@@ -123,7 +141,7 @@ class Segment:
         return {k: b2l(v) for k, v in data.items() if v}
 
     def _get_pts_start(self):
-        iframer =IFramer(shush=True)
+        iframer = IFramer(shush=True)
         pts_start = iframer.first(self.media)
         print(pts_start)
         self.pts = round(pts_start, 6)
@@ -186,8 +204,7 @@ class Segment:
             try:
                 tf = threefive.Cue(self.cue)
                 tf.decode()
-                if self.debug:
-                    tf.show()
+                tf.show()
                 self.cue_data = tf.get()
             except:
                 pass
@@ -219,7 +236,7 @@ class Segment:
             if self.pts:
                 self.start = self.pts
         if self.start:
-            self.start = round(self.start,6)
+            self.start = round(self.start, 6)
             self.end = round(self.start + self.duration, 6)
         else:
             self.start = 0
@@ -244,28 +261,28 @@ class Segment:
         presort = list(self.tags.keys())
         presort.sort()
         for x in presort:
-            kay =x
+            kay = x
             vee = self.tags[x]
-            if isinstance(vee,dict):
-                tmp =[]
-                for k,v in vee.items():
-                    tmp.append(f'{k}={v}')
-                vee =','.join(tmp)
-            stanza.append(f'{kay}:{vee}' )
-        stanza =[x.replace(':None','').replace(':{}','') for x in stanza]
+            if isinstance(vee, dict):
+                tmp = []
+                for k, v in vee.items():
+                    tmp.append(f"{k}={v}")
+                vee = ",".join(tmp)
+            stanza.append(f"{kay}:{vee}")
+        stanza = [x.replace(":None", "").replace(":{}", "") for x in stanza]
         stanza.append(self.media)
         return stanza
 
 
 class NP:
     """
-   Ultra Mega Zoom Zoom no parse edition.
+    Ultra Mega Zoom Zoom no parse edition.
     """
 
-    def __init__(self):
+    def __init__(self, args):
         self.base_uri = ""
-        self.sidecar =deque()
-        self.sidecar_file ='sidecar.txt'
+        self.sidecar = deque()
+        self.sidecar_file = "sidecar.txt"
         self.next_expected = 0
         self.hls_time = 0.0
         self.desegment = False
@@ -274,87 +291,40 @@ class NP:
         self.m3u8 = None
         self.manifest = None
         self.start = None
-        self.outfile = "np.m3u8"
+        self.outfile = "index.m3u8"
+        self.output = None
         self.chunk = []
         self.headers = {}
-        self.debug = False
-        self.window_size = 10000
+        self.window_size = 100
         self.first = True
         self.scte35 = SCTE35()
-        self.last_sidelines= None
+        self.last_sidelines = None
+        self.args = args
 
-    def _parse_args(self):
-        """
-        _parse_args parse command line args
-        """
-        parser = argparse.ArgumentParser()
-        parser.add_argument(
-            "-i",
-            "--input",
-            default=None,
-            help=""" Input source, like "/home/a/vid.ts"
-                                    or "udp://@235.35.3.5:3535"
-                                    or "https://futzu.com/xaa.ts"
-                                    """,
-        )
-
-        parser.add_argument(
-            "-o",
-            "--outfile",
-            default="np.m3u8",
-            help=" output m3u8 file ",
-        )
-
-        parser.add_argument(
-            "-v",
-            "--version",
-            action="store_const",
-            default=False,
-            const=True,
-            help="Show version",
-        )
-
-        parser.add_argument(
-            "-d",
-            "--debug",
-            action="store_const",
-            default=False,
-            const=True,
-            help="Enable debug output.",
-        )
-
-        args = parser.parse_args()
-        self._apply_args(args)
-
-    @staticmethod
-    def _args_version(args):
-        if args.version:
+    def _args_version(self):
+        if self.args.version:
             print(version())
             sys.exit()
 
-    def _args_desegment(self, args):
-        self.outfile = args.outfile
+    def _args_input(self):
+        if self.args.input:
+            self.m3u8 = self.args.input
 
-    def _args_input(self, args):
-        if args.input:
-            self.m3u8 = args.input
+    def _args_output(self):
+        self.output = self.args.output_dir
 
-    def _args_debug(self, args):
-        self.debug = args.debug
+    def _args_sidecar(self):
+        self.sidecar_file = self.args.sidecar
 
-    def _args_output(self, args):
-        if args.output:
-            self.outfile = args.output
-
-    def _apply_args(self, args):
+    def _apply_args(self):
         """
         _apply_args  uses command line args
         to set m3ufu instance vars
         """
-        self._args_version(args)
-        self._args_input(args)
-        self._args_desegment(args)
-        self._args_debug(args)
+        self._args_version()
+        self._args_input()
+        self._args_output()
+        self._args_sidecar()
 
     @staticmethod
     def _clean_line(line):
@@ -363,9 +333,21 @@ class NP:
             line = line.replace("\n", "").replace("\r", "")
         return line
 
+    @staticmethod
+    def mk_uri(head, tail):
+        """
+        mk_uri is used to create local filepaths
+        """
+        sep = "/"
+        if len(head.split("\\")) > len(head.split("/")):
+            sep = "\\"
+        if not head.endswith(sep):
+            head = head + sep
+        return f"{head}{tail}"
+
     def _is_master(self, line):
         playlist = False
-        for this in ["STREAM-INF", "EXT-X-MEDIA","#EXT-X-I-FRAME-STREAM-INF"]:
+        for this in ["STREAM-INF", "EXT-X-MEDIA", "#EXT-X-I-FRAME-STREAM-INF"]:
             if this in line:
                 self.master = True
                 self.reload = False
@@ -384,44 +366,41 @@ class NP:
         self.hls_time += segment.duration
 
     def _add_media(self, media):
-        popped =None
+        popped = None
         if media not in media_list:
             media_list.append(media)
             while len(media_list) > self.window_size:
-                #popped, media_list = media_list[0],self.media_list[1:]
-                popped =media_list.popleft()
-                print(f"POP MEDIA {popped}")
+                popped = media_list.popleft()
                 del popped
-            while len(segments) > self.window_size :
-                #popped, segments = self.segments[0],self.segments[1:]
-                popped =segments.popleft()
-                print(f"POP SEGMENT {popped}")
+            while len(segments) > self.window_size:
+                popped = segments.popleft()
                 del popped
             self.scte35.chk_cue_state()
             self.scte35.mk_cue_state()
-            segment = Segment(self.chunk, media, self.start, self.base_uri, first=self.first)
+            segment = Segment(
+                self.chunk, media, self.start, self.base_uri, first=self.first
+            )
             segment.decode()
             self._chk_sidecar_cues(segment)
-          #  if self.scte35.cue_time:
             self._add_cue_tag(segment)
-            segment.add_tag('# start', f' {segment.start}  cue time: {self.scte35.cue_time}')
+            segment.add_tag("# start", f" {segment.start}")
             if segment.tmp:
                 os.unlink(segment.tmp)
                 del segment.tmp
-            print(json.dumps(segment.kv_clean(), indent=3))
+            seg = segment.relative_uri.rsplit("/", 1)[-1]
+            print(f"media: {seg}\tstart: {segment.start}\tduration: {segment.duration}")
             segments.append(segment)
             self._set_times(segment)
-            self.first=False
+            self.first = False
             if self.scte35.break_timer is not None:
                 self.scte35.break_timer += segment.duration
-
 
     def _do_media(self, line):
         media = line
         if self.master is None:
             print(f"SELF.MASTER is {self.master}")
             playlist = self._is_master(line)
-            self.master=True
+            self.master = True
             if playlist:
                 media = playlist
         if self.base_uri not in line:
@@ -453,22 +432,19 @@ class NP:
             self.reload = False
         if not self._parse_header(line):
             if "DISCONTINUITY" in line:
-                self.first=True
-           # self._is_master(line)
+                self.first = True
             self.chunk.append(line)
-            if line[0] !="#":
+            if line[0] != "#":
                 if len(line):
                     self._do_media(line)
-                    #gc.collect()
-                    #for i in gc.get_objects():
-                     #   print(i)
+                    gc.collect()
         return True
 
     def _get_window_size(self, m3u8_lines):
         self.window_size = len([line for line in m3u8_lines if b"#EXTINF:" in line])
-        print(self.window_size, "WINDOW")
 
     def decode(self):
+        self._apply_args()
         gc.enable()
         if self.desegment and os.path.exists(self.outfile):
             os.unlink(self.outfile)
@@ -484,20 +460,19 @@ class NP:
                 for line in m3u8_lines:
                     if not self._parse_line(line):
                         break
-                with open(self.outfile,"w",encoding="utf8") as npm3u8:
-                    print(self.headers)
-                    for k,v in self.headers.items():
+                out = self.mk_uri(self.output, self.outfile)
+                with open(out, "w", encoding="utf8") as npm3u8:
+                    for k, v in self.headers.items():
                         if v is None:
-                            npm3u8.write(f'{k}\n')
+                            npm3u8.write(f"{k}\n")
                         else:
-                            npm3u8.write(f'{k}:{v}\n')
+                            npm3u8.write(f"{k}:{v}\n")
                     for segment in segments:
                         stanza = segment.as_stanza()
-                        _=[npm3u8.write(j+'\n') for j in stanza]
+                        _ = [npm3u8.write(j + "\n") for j in stanza]
                 if self.reload == True:
                     if "#EXT-X-TARGETDURATION" in self.headers:
-                        time.sleep(self.headers["#EXT-X-TARGETDURATION"] -2 )
-
+                        time.sleep(self.headers["#EXT-X-TARGETDURATION"] - 2)
 
     def load_sidecar(self):
         """
@@ -515,13 +490,13 @@ class NP:
                     line = line.decode().strip().split("#", 1)[0]
                     if line:
                         print(f"{ON}loading  {line}{OFF}")
-                        time.sleep(.1)
+                        time.sleep(0.1)
                         if float(line.split(",", 1)[0]) == 0.0:
                             line = f'{self.start},{line.split(",",1)[1]}'
                         self.add2sidecar(line)
                 sidefile.close()
                 self.last_sidelines = sidelines
-         #   self.clobber_file(self.args.sidecar_file)
+        #   self.clobber_file(self.args.sidecar_file)
 
     def add2sidecar(self, line):
         """
@@ -529,7 +504,6 @@ class NP:
         """
         print(line)
         insert_pts, cue = line.split(",", 1)
-        print(insert_pts)
         insert_pts = float(insert_pts)
         if [insert_pts, cue] not in self.sidecar:
             self.sidecar.append([insert_pts, cue])
@@ -541,20 +515,18 @@ class NP:
         for the next sidecar cue and inserts the cue if needed.
         """
         self.load_sidecar()
-        print(self.sidecar)
         if self.sidecar:
             for s in list(self.sidecar):
                 splice_pts = float(s[0])
                 splice_cue = s[1]
                 if segment.start:
-                  half = segment.duration/2
+                    half = segment.duration / 2
                 if splice_pts:
-                    if (segment.start - half) <= splice_pts <= (segment.start +half):
-                        print("HIT",s)
+                    if (segment.start - half) <= splice_pts <= (segment.start + half):
                         self.sidecar.remove(s)
                         self.scte35.cue = Cue(splice_cue)
                         self.scte35.cue.decode()
-                        print(f'{self.scte35.cue.command.get()}')
+                        print(f"{self.scte35.cue.command.name}")
                         self._chk_cue_time()
 
     def _discontinuity_seq_plus_one(self):
@@ -594,8 +566,6 @@ class NP:
             print(f"{segment.media}   {kay} {vee}")
             print(segment.tags)
 
-
-
     def _chk_cue_time(self):
         if self.scte35.cue:
             self.scte35.cue_time = self._adjusted_pts(self.scte35.cue)
@@ -626,11 +596,150 @@ class NP:
         return int(round(float_time * 90000))
 
 
-def cli():
-    fu = NP()
-    fu._parse_args()
+class UMZZnp(UMZZ):
+    def __init__(self, m3u8_list):
+        super().__init__(m3u8_list)
+
+    def add_rendition(self, m3u8, dir_name, rendition_sidecar=None):
+        """
+        add_rendition starts a process for each rendition and
+        creates a pipe for each rendition to receive SCTE-35.
+        """
+        p = mp.Process(
+            target=npmp_run,
+            args=(m3u8, dir_name, rendition_sidecar),
+        )
+        p.start()
+        print(f"Rendition Process Started {dir_name}")
+        self.procs.append(p)
+
+
+def mk_npmp(manifest, dir_name, rendition_sidecar):
+    """
+    mk_x9mp generates an X9MP instance and
+    sets default values
+    """
+    np = NP(argue())
+    np.args.output_dir = dir_name
+    np.args.input = manifest.media
+    np.args.sidecar = rendition_sidecar
+    return np
+
+
+def npmp_run(manifest, dir_name, rendition_sidecar=None):
+    """
+    mp_run is the process started for each rendition.
+    """
+    args = argue()
+    np = mk_npmp(manifest, dir_name, rendition_sidecar)
+    np.decode()
+    return False
+
+
+def do(args):
+    """
+    do runs umzz programmatically.
+    Use like this:
+
+    from umzz import do, argue
+
+    args =argue()
+
+    args.input = "/home/a/slow/master.m3u8"
+    args.live = True
+    args.replay = True
+    args.sidecar_file="sidecar.txt"
+    args.output_dir = "out-stuff"
+
+    do(args)
+
+    set any command line options
+    programmatically with args.
+    Here are the defaults returned from argue() .
+
+    input='master.m3u8',
+    continue_m3u8=False,
+    delete=False,
+    live=False,
+    no_discontinuity=False,
+    output_dir='.',
+    program_date_time=False,
+    replay=False,
+    sidecar_file=None,
+    shulga=False,
+    time=2,
+    hls_tag='x_cue',
+    window_size=5,
+
+    """
+    fu = M3uFu()
+    if not args.input:
+        print("input source required (Set args.input)")
+        sys.exit()
+    fu.m3u8 = args.input
+    if not os.path.isdir(args.output_dir):
+        os.mkdir(args.output_dir)
     fu.decode()
+    um = UMZZnp(fu.segments)
+    um.go()
+
+
+def argue():
+    """
+    argue parses command line args
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-i",
+        "--input",
+        default=None,
+        help=""" Input source, like "/home/a/vid.ts"
+                                or "udp://@235.35.3.5:3535"
+                                or "https://futzu.com/xaa.ts"
+                                """,
+    )
+
+    parser.add_argument(
+        "-s",
+        "--sidecar_file",
+        default=None,
+        help=f"Sidecar file of SCTE-35 (pts,cue) pairs   [default:{ON}None{OFF}]",
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output_dir",
+        default=".",
+        help=" output directory ",
+    )
+
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="store_const",
+        default=False,
+        const=True,
+        help="Show version",
+    )
+
+    return parser.parse_args()
+
+
+def cli():
+    """
+    cli provides one function call
+    for running shari with command line args
+    Two lines of code gives you a full umzz command line tool.
+
+     from umzz import cli
+     cli()
+
+    """
+    args = argue()
+    _ = {print(k, "=", v) for k, v in vars(args).items()}
+    do(args)
 
 
 if __name__ == "__main__":
+    mp.set_start_method("spawn")
     cli()
