@@ -1,7 +1,12 @@
 # np
 no parse  HLS SCTE-35 Injection via sidecar file
 
-# There has got to be a better way.
+# <s>There has got to be a better way.</s> 
+# This is the better way.
+
+## Update: it's working.
+
+
 
 <br>
 
