@@ -7,14 +7,28 @@ from new_reader import reader
 class SplitStream(IFramer):
     def __init__(self, shush=False):
         self.shush = shush
-        
-    def split_at(self,segment, pts):
+
+    @staticmethod
+    def mk_uri(head, tail):
+        """
+        mk_uri is used to create local filepaths
+        """
+        sep = "/"
+        if len(head.split("\\")) > len(head.split("/")):
+            sep = "\\"
+        if not head.endswith(sep):
+            head = head + sep
+        return f"{head}{tail}"
+
+    def split_at(self,segment, pts, output_dir):
         splice_point= None
         seg =segment.rsplit('/')[-1]
         a_name=f'a-{seg}'
         b_name=f'b-{seg}'
-        with open(a_name,'wb') as a:
-            with open(b_name,'wb') as b:
+        a_media =self.mk_uri(output_dir,a_name)
+        b_media =self.mk_uri(output_dir,b_name)
+        with open(a_media,'wb') as a:
+            with open(b_media,'wb') as b:
                 outfile = a
                 with reader(segment) as video:
                     for pkt in iter(partial(video.read, 188), b""):
@@ -25,17 +39,5 @@ class SplitStream(IFramer):
                                     splice_point= iframe_pts
                                 outfile = b
                         outfile.write(pkt)
-        return splice_point, a_name, b_name
+        return splice_point, a_media, b_media
 
-
-
-segment = sys.argv[1]
-pts = float(sys.argv[2])
-if segment and pts:
-    stream=SplitStream()
-    print(stream.split_at(segment,pts))
-
-
-
-
-            
