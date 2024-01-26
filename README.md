@@ -47,7 +47,7 @@ and keep CPU usage to a minimum.
 ### Current np state:
 
 ### I've got most of it done, here's what's working.
-Everything is working,  except splitting segments for SCTE-35, I haven't merged it in yet.
+Everything is working,  except splitting segments for SCTE-35, it's still a little buggy.<br>
 ![image](https://github.com/futzu/np/assets/52701496/504edc19-9ead-45a7-9555-649da4c9a7ba)
 
 __Currently__, I am  doing 'enhanced' rounding of SCTE-35 Cue splice points to the nearest segment.
