@@ -39,7 +39,7 @@ version you have installed.
 
 MAJOR = "0"
 MINOR = "0"
-MAINTAINENCE = "05"
+MAINTAINENCE = "07"
 
 
 ON = "\033[1m"
@@ -142,7 +142,7 @@ class Segment:
     def _get_pts_start(self):
         iframer = IFramer(shush=True)
         pts_start = iframer.first(self.media)
-     #   print(pts_start)
+        #   print(pts_start)
         self.pts = round(pts_start, 6)
         self.start = self.pts
 
@@ -353,8 +353,7 @@ class NP:
         self.next_expected += round(segment.duration, 6)
         self.hls_time += segment.duration
 
-    def _add_segment_tags(self,segment):
-        self._chk_sidecar_cues(segment)
+    def _add_segment_tags(self, segment):
         self._add_cue_tag(segment)
         segment.add_tag("# start", f" {segment.start}")
         if segment.tmp:
@@ -375,46 +374,60 @@ class NP:
                 del popped
 
     def _add_media(self, media):
-            self.scte35.chk_cue_state()
-            self.scte35.mk_cue_state()
-            segment = Segment(
-                self.chunk, media, self.start, self.base_uri, first=self.first
-            )
-            segment.decode()
-            if self.scte35.cue_time:
-                if (segment.start ) < self.scte35.cue_time < (segment.end):
-                    print("SPLIT")
-                    self.chunk = []
-                    stream=SplitStream()
-                    splice_point, a_name, b_name = stream.split_at(segment.media,self.scte35.cue_time)
-                    a_chunk=[f'#EXTINF:{round(self.scte35.cue_time - segment.start,6)}']
-                    a_media =self.mk_uri(self.args.output_dir, a_name)
-                    a_start = segment.start
-                    a_segment = Segment(a_chunk,a_media,a_start,self.args.output_dir,self.first)
-                    a_segment.decode()
-                    self._pop(a_media)
-                    self._add_segment_tags(a_segment)
-                    self.add_segment(a_segment)
-                    self.chunk=[]
-                    b_chunk=[f'#EXTINF:{round(segment.end - self.scte35.cue_time,6)}']
-                    b_media =self.mk_uri(self.args.output_dir, b_name)
-                    b_start=self.scte35.cue_time
-                    b_segment = Segment(b_chunk,b_media,b_start,self.args.output_dir,self.first)
-                    b_segment.decode()
-                    self._pop(b_media)
-                    self._add_segment_tags(b_segment)
-                    self.add_segment(b_segment)
-                    return
-            self._pop(segment.media)
-            self._add_segment_tags(segment)
-            self.add_segment(segment)
+        self.scte35.chk_cue_state()
 
-    def add_segment(self,segment):
-            segments.append(segment)
-            self._set_times(segment)
-            self.first = False
-            if self.scte35.break_timer is not None:
-                self.scte35.break_timer += segment.duration
+        segment = Segment(
+            self.chunk, media, self.start, self.base_uri, first=self.first
+        )
+        segment.decode()
+        self._chk_sidecar_cues(segment)
+        self.scte35.mk_cue_state()
+        self._set_times(segment)
+
+        if self.scte35.cue_time:
+            if (segment.start) < self.scte35.cue_time < (segment.end):
+                print(segment.start, "CUE", self.scte35.cue_time)
+                print("SPLIT")
+                self.chunk = []
+                stream = SplitStream()
+                splice_point, a_media, b_media = stream.split_at(
+                    segment.media, self.scte35.cue_time, self.args.output_dir
+                )
+                a_chunk = [f"#EXTINF:{round(self.scte35.cue_time - segment.start,6)}"]
+                # a_media =self.mk_uri(self.args.output_dir, a_name)
+                a_start = segment.start
+                self.first = True
+                a_segment = Segment(
+                    a_chunk, a_media, a_start, self.args.output_dir, self.first
+                )
+                a_segment.decode()
+                media_list.append(a_media)
+                self._add_segment_tags(a_segment)
+                self.add_segment(a_segment)
+                self.chunk = []
+                self.first = True
+                b_chunk = [f"#EXTINF:{round(segment.end - self.scte35.cue_time,6)}"]
+                b_start = a_segment.end
+                b_segment = Segment(
+                    b_chunk, b_media, b_start, self.args.output_dir, self.first
+                )
+                b_segment.decode()
+                self._add_segment_tags(b_segment)
+                self.add_segment(b_segment)
+                media_list.append(b_media)
+
+                return
+        self._add_segment_tags(segment)
+        self.add_segment(segment)
+        self._pop(segment)
+
+    def add_segment(self, segment):
+        segments.append(segment)
+        self._set_times(segment)
+        self.first = False
+        if self.scte35.break_timer is not None:
+            self.scte35.break_timer += segment.duration
+        self._pop(segment)
 
     def _do_media(self, line):
         media = line
@@ -439,7 +452,7 @@ class NP:
             return True
         return False
 
-    def _endlist_chk(self,line):
+    def _endlist_chk(self, line):
         """
         _endlist_chk checks for
         #EXT-X-ENDLIST tags
@@ -447,7 +460,7 @@ class NP:
         if "ENDLIST" in line:
             self.reload = False
 
-    def _disco_chk(self,line):
+    def _disco_chk(self, line):
         """
         _disco_chk sets self.first when it sees a segment
         with a discontinuity tag.
@@ -457,7 +470,6 @@ class NP:
         """
         if "#EXT-X-DISCONTINUITY" in line:
             self.first = True
-
 
     def _parse_line(self, line):
         if not line:
@@ -552,16 +564,15 @@ class NP:
             for s in list(self.sidecar):
                 splice_pts = float(s[0])
                 splice_cue = s[1]
-                if segment.start:
-                    half = segment.duration / 2
                 if splice_pts:
-                    if (segment.start ) < splice_pts < (segment.end):
+                    if (segment.end) >= splice_pts:
+                        print("SPLICE TIME", splice_pts)
                         self.sidecar.remove(s)
                         self.scte35.cue = Cue(splice_cue)
                         self.scte35.cue.decode()
+                        # self.scte35.cue_time = splice_pts
                         print(f"{self.scte35.cue.command.name}")
                         self._chk_cue_time()
-
 
     def _disco_seq_plus_one(self):
         if "#EXT-X-DISCONTINUITY" in segments[0].tags:
@@ -583,8 +594,8 @@ class NP:
                 self.scte35.break_timer = None
                 self.scte35.cue_state = "IN"
         tag = self.scte35.mk_cue_tag()
-     #   print(tag)
         if tag:
+            print(tag)
             if self.scte35.cue_state in ["OUT", "IN"]:
                 self._add_discontinuity(segment)
             kay = tag
@@ -592,8 +603,8 @@ class NP:
             if ":" in tag:
                 kay, vee = tag.split(":", 1)
             segment.add_tag(kay, vee)
-          #  print(f"{segment.media}   {kay} {vee}")
-           # print(segment.tags)
+        #  print(f"{segment.media}   {kay} {vee}")
+        # print(segment.tags)
 
     def _chk_cue_time(self):
         if self.scte35.cue:
