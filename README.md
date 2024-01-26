@@ -50,11 +50,6 @@ and keep CPU usage to a minimum.
 Everything is working,  except splitting segments for SCTE-35, it's still a little buggy.<br>
 ![image](https://github.com/futzu/np/assets/52701496/504edc19-9ead-45a7-9555-649da4c9a7ba)
 
-__Currently__, I am  doing 'enhanced' rounding of SCTE-35 Cue splice points to the nearest segment.
-* with a __6 second__ segments __np__ is averaging about __+/-1.5 seconds__ off,
-* with __2 second__ segments, __np__ is averaging less than __+/- 1 second__ off.
-
-
 <br>
 
 ![image](https://github.com/futzu/np/assets/52701496/b4c2359c-8bff-4801-9533-90cd4bd7a065)
