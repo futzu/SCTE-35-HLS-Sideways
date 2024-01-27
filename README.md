@@ -19,9 +19,6 @@ and keep CPU usage to a minimum.
 
 <br>
 
- I can do that.
-
-### the game plan.
 
 
 * read the master.m3u8 and copy it locally.
@@ -44,28 +41,50 @@ and keep CPU usage to a minimum.
   *  add CONT cue tags to the manifests as needed, but don't parse any other segment until you have a CUE-IN event.
 
 
-### Current np state:
-
-### I've got most of it done, here's what's working.
-Everything is working,  except splitting segments for SCTE-35, it's still a little buggy.<br>
-![image](https://github.com/futzu/np/assets/52701496/504edc19-9ead-45a7-9555-649da4c9a7ba)
-
-<br>
-
-![image](https://github.com/futzu/np/assets/52701496/b4c2359c-8bff-4801-9533-90cd4bd7a065)
-<br>
-#### Multiprocessing siddcar SCTE-35 is working. 
-* np uses 1 sidecar and pushes the SCTE-35 to each rendition process.
-* SCTE-35 can be written to the sidecar file while __np__ is running.
-* notice how all renditions are in sync.
-<br>
+```lua
+#EXTINF:6.0
+https://example.com/0/seg541.ts    <-- expands existing segment URI, but doesn't parse the segments
 
 
-![image](https://github.com/futzu/np/assets/52701496/797bcc57-4ee3-4876-8d63-79e834b3092f)
+# start: 3255.733333 cue: 3256.0
+#EXTINF:0.266667
+./0/a-seg542.ts       <--- When there is a SCTE-35 Cue, it splits the segment at the splice point
+                                                                    the split segments are stored on your server.
+
+# start: 3256.0 cue: 3256.0        < -- the second split segment is the where the CUE-OUT starts
+#EXT-X-CUE-OUT:13.0
+#EXT-X-DISCONTINUITY
+#EXTINF:5.466666
+./0/b-seg542.ts
+# start: 3261.466666 cue: 3269.0
+#EXT-X-CUE-OUT-CONT:5.466666/13.0
+#EXTINF:6.0
+https://example.com/0/seg543.ts     <--- during  the ad break, the segments are not parsed 
+# start: 3267.466666 cue: 3269.0
+#EXT-X-CUE-OUT-CONT:11.466666/13.0
+#EXTINF:1.533334
+./0/a-seg544.ts                   <-- split on the CUE-IN splice point      
+
+  
+# start: 3269.0 cue: 3269.0      <--- CUE IN on the second split segment     
+#EXT-X-CUE-IN
+#EXT-X-DISCONTINUITY
+#EXTINF:4.199999
+./0/b-seg544.ts
 
 
+# start: 3273.199999 cue: None
+#EXTINF:6.0
+https://example.com/0/seg545.ts   <--- back to not parsing segments
+# start: 3279.199999 cue: None
+#EXTINF:6.0
+https://example.com/0/seg546.ts
+```
+```smalltalk
+Each directory looks like this
 
-<br>
-
-
-
+ ls 0/
+  a-seg542.ts    b-seg542.ts 
+  a-seg544.ts   b-seg544.ts  
+  index.m3u8 sidecar.txt
+```
