@@ -65,6 +65,8 @@ def atoif(value):
     """
     atoif converts ascii to (int|float)
     """
+    if isinstance(value,float):
+        return value    
     if "." in value:
         try:
             value = float(value)
@@ -86,7 +88,7 @@ class Segment:
     def __init__(self, lines, media_uri, start, base_uri, first):
         self.lines = lines
         self.media = media_uri
-        self.pts = None
+        self.pts = 0
         self.start = start
         self.end = None
         self.duration = 0
@@ -143,7 +145,9 @@ class Segment:
         iframer = IFramer(shush=True)
         pts_start = iframer.first(self.media)
         #   print(pts_start)
-        self.pts = round(pts_start, 6)
+        if pts_start:
+            self.pts = round(pts_start, 6)
+
         self.start = self.pts
 
     def media_file(self):
@@ -349,13 +353,13 @@ class NP:
         if not self.start:
             self.start = 0.0
         self.start += segment.duration
-        self.next_expected = self.start + self.hls_time
+        self.next_expected = self.start #+ self.hls_time
         self.next_expected += round(segment.duration, 6)
         self.hls_time += segment.duration
 
     def _add_segment_tags(self, segment):
         self._add_cue_tag(segment)
-        segment.add_tag("# start", f" {segment.start}")
+        segment.add_tag("# start", f" {segment.start} cue: {self.scte35.cue_time}")
         if segment.tmp:
             os.unlink(segment.tmp)
             del segment.tmp
@@ -375,15 +379,12 @@ class NP:
 
     def _add_media(self, media):
         self.scte35.chk_cue_state()
-
         segment = Segment(
             self.chunk, media, self.start, self.base_uri, first=self.first
         )
         segment.decode()
         self._chk_sidecar_cues(segment)
-        self.scte35.mk_cue_state()
-        self._set_times(segment)
-
+       # self._set_times(segment)
         if self.scte35.cue_time:
             if (segment.start) < self.scte35.cue_time < (segment.end):
                 print(segment.start, "CUE", self.scte35.cue_time)
@@ -396,17 +397,19 @@ class NP:
                 a_chunk = [f"#EXTINF:{round(self.scte35.cue_time - segment.start,6)}"]
                 # a_media =self.mk_uri(self.args.output_dir, a_name)
                 a_start = segment.start
-                self.first = True
+             #   self.first = True
                 a_segment = Segment(
                     a_chunk, a_media, a_start, self.args.output_dir, self.first
                 )
                 a_segment.decode()
-                media_list.append(a_media)
                 self._add_segment_tags(a_segment)
                 self.add_segment(a_segment)
+                media_list.append(a_media)
+                self.scte35.mk_cue_state()
+
                 self.chunk = []
-                self.first = True
-                b_chunk = [f"#EXTINF:{round(segment.end - self.scte35.cue_time,6)}"]
+               # self.first = True
+                b_chunk = [f"#EXTINF:{round(segment.end - splice_point,6)}"]
                 b_start = a_segment.end
                 b_segment = Segment(
                     b_chunk, b_media, b_start, self.args.output_dir, self.first
@@ -415,8 +418,11 @@ class NP:
                 self._add_segment_tags(b_segment)
                 self.add_segment(b_segment)
                 media_list.append(b_media)
+                self.scte35.mk_cue_state()
 
                 return
+        self.scte35.mk_cue_state()
+
         self._add_segment_tags(segment)
         self.add_segment(segment)
         self._pop(segment)
@@ -434,7 +440,8 @@ class NP:
         if self.base_uri not in line:
             if "http" not in line:
                 media = self.base_uri + media
-        self._add_media(media)
+        if media not in media_list:
+            self._add_media(media)
         self.chunk = []
 
     def _parse_header(self, line):
@@ -509,6 +516,7 @@ class NP:
     def write_m3u8(self):
         out = self.mk_uri(self.output, self.outfile)
         with open(out, "w", encoding="utf8") as npm3u8:
+            
             for k, v in self.headers.items():
                 if v is None:
                     npm3u8.write(f"{k}\n")
@@ -517,8 +525,9 @@ class NP:
             for segment in segments:
                 stanza = segment.as_stanza()
                 _ = [npm3u8.write(j + "\n") for j in stanza]
-            if "#EXT-X-TARGETDURATION" in self.headers:
-                time.sleep(self.headers["#EXT-X-TARGETDURATION"] - 2)
+        time.sleep(segments[-1].duration *0.9)         
+  #      if "#EXT-X-TARGETDURATION" in self.headers:
+     #       time.sleep(self.headers["#EXT-X-TARGETDURATION"] - 1)
 
     def load_sidecar(self):
         """
@@ -565,7 +574,7 @@ class NP:
                 splice_pts = float(s[0])
                 splice_cue = s[1]
                 if splice_pts:
-                    if (segment.end) >= splice_pts:
+                    if (segment.start) < splice_pts < segment.end:
                         print("SPLICE TIME", splice_pts)
                         self.sidecar.remove(s)
                         self.scte35.cue = Cue(splice_cue)
