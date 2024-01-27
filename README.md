@@ -42,49 +42,46 @@ and keep CPU usage to a minimum.
 
 
 ```lua
+#EXTM3U
+#EXT-X-VERSION:4
+#EXT-X-TARGETDURATION:7    <--- headers and settings are copied over.
 #EXTINF:6.0
 https://example.com/0/seg541.ts    <-- expands existing segment URI, but doesn't parse the segments
-
-
-# start: 3255.733333 cue: 3256.0
 #EXTINF:0.266667
-./0/a-seg542.ts       <--- When there is a SCTE-35 Cue, it splits the segment at the splice point
-                                                                    the split segments are stored on your server.
-
-# start: 3256.0 cue: 3256.0        < -- the second split segment is the where the CUE-OUT starts
-#EXT-X-CUE-OUT:13.0
+./0/a-seg542.ts       <--- When there is a SCTE-35 Cue, it splits the segment at the splice point.
+#EXT-X-CUE-OUT:13.0     
 #EXT-X-DISCONTINUITY
 #EXTINF:5.466666
-./0/b-seg542.ts
-# start: 3261.466666 cue: 3269.0
+./0/b-seg542.ts      < -- the second split segment is the where the CUE-OUT starts
 #EXT-X-CUE-OUT-CONT:5.466666/13.0
 #EXTINF:6.0
-https://example.com/0/seg543.ts     <--- during  the ad break, the segments are not parsed 
-# start: 3267.466666 cue: 3269.0
+https://example.com/0/seg543.ts     <--- during  the ad break, the segments are not parsed, URIs are expanded.
 #EXT-X-CUE-OUT-CONT:11.466666/13.0
 #EXTINF:1.533334
-./0/a-seg544.ts                   <-- split on the CUE-IN splice point      
-
-  
-# start: 3269.0 cue: 3269.0      <--- CUE IN on the second split segment     
-#EXT-X-CUE-IN
+./0/a-seg544.ts             <-- split on the CUE-IN splice point       
+#EXT-X-CUE-IN            
 #EXT-X-DISCONTINUITY
 #EXTINF:4.199999
-./0/b-seg544.ts
-
-
-# start: 3273.199999 cue: None
+./0/b-seg544.ts    <--- CUE IN on the second split segment 
 #EXTINF:6.0
 https://example.com/0/seg545.ts   <--- back to not parsing segments
-# start: 3279.199999 cue: None
-#EXTINF:6.0
-https://example.com/0/seg546.ts
+
 ```
+* The new master.m3u8 is written to your server
+* Each rendition has an index.m3u8 and just the split segments in sub directories on your server.
+* Each sub-directory looks like this
 ```smalltalk
-Each directory looks like this
 
  ls 0/
   a-seg542.ts    b-seg542.ts 
   a-seg544.ts   b-seg544.ts  
   index.m3u8 sidecar.txt
 ```
+The CPU load is super low. This is __np__ parsing a master.m3u8 with 4 renditions over a network. 
+* There are 6 python processes showing; the main process, multiprocess manager, and 1 for each of the 4 renditions.
+<br>
+
+
+![image](https://github.com/futzu/np/assets/52701496/269cb178-e5c0-4127-a365-0cbb8fd0adaa)
+
+
