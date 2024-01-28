@@ -5,7 +5,7 @@ from new_reader import reader
 
 
 class SplitStream(IFramer):
-    def __init__(self, shush=False):
+    def __init__(self, shush=True):
         self.shush = shush
 
     @staticmethod
