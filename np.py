@@ -39,7 +39,7 @@ version you have installed.
 
 MAJOR = "0"
 MINOR = "0"
-MAINTAINENCE = "07"
+MAINTAINENCE = "09"
 
 
 ON = "\033[1m"
@@ -65,8 +65,8 @@ def atoif(value):
     """
     atoif converts ascii to (int|float)
     """
-    if isinstance(value,float):
-        return value    
+    if isinstance(value, float):
+        return value
     if "." in value:
         try:
             value = float(value)
@@ -353,7 +353,7 @@ class NP:
         if not self.start:
             self.start = 0.0
         self.start += segment.duration
-        self.next_expected = self.start #+ self.hls_time
+        self.next_expected = self.start  # + self.hls_time
         self.next_expected += round(segment.duration, 6)
         self.hls_time += segment.duration
 
@@ -363,8 +363,6 @@ class NP:
         if segment.tmp:
             os.unlink(segment.tmp)
             del segment.tmp
-        seg = segment.relative_uri.rsplit("/", 1)[-1]
-        print(f"media: {seg}\tstart: {segment.start}\tduration: {segment.duration}")
 
     def _pop(self, media):
         popped = None
@@ -377,14 +375,23 @@ class NP:
                 popped = segments.popleft()
                 del popped
 
+    def _add_split_segment(self, chunk, media, start):
+        sp_seg = Segment(chunk, media, start, self.args.output_dir, self.first)
+        sp_seg.decode()
+        self._add_segment_tags(sp_seg)
+        self._add_segment(sp_seg)
+        media_list.append(media)
+        self.chunk = []
+        self.scte35.mk_cue_state()
+
     def _add_media(self, media):
-        self.scte35.chk_cue_state()
         segment = Segment(
             self.chunk, media, self.start, self.base_uri, first=self.first
         )
         segment.decode()
         self._chk_sidecar_cues(segment)
-       # self._set_times(segment)
+        self.scte35.chk_cue_state() # leave this here.
+
         if self.scte35.cue_time:
             if (segment.start) < self.scte35.cue_time < (segment.end):
                 print(segment.start, "CUE", self.scte35.cue_time)
@@ -395,39 +402,19 @@ class NP:
                     segment.media, self.scte35.cue_time, self.args.output_dir
                 )
                 a_chunk = [f"#EXTINF:{round(self.scte35.cue_time - segment.start,6)}"]
-                # a_media =self.mk_uri(self.args.output_dir, a_name)
                 a_start = segment.start
-             #   self.first = True
-                a_segment = Segment(
-                    a_chunk, a_media, a_start, self.args.output_dir, self.first
-                )
-                a_segment.decode()
-                self._add_segment_tags(a_segment)
-                self.add_segment(a_segment)
-                media_list.append(a_media)
-                self.scte35.mk_cue_state()
-
-                self.chunk = []
-               # self.first = True
-                b_chunk = [f"#EXTINF:{round(segment.end - splice_point,6)}"]
-                b_start = a_segment.end
-                b_segment = Segment(
-                    b_chunk, b_media, b_start, self.args.output_dir, self.first
-                )
-                b_segment.decode()
-                self._add_segment_tags(b_segment)
-                self.add_segment(b_segment)
-                media_list.append(b_media)
-                self.scte35.mk_cue_state()
-
+                self._add_split_segment(a_chunk, a_media, a_start)
+                if splice_point:
+                    print(self.scte35.cue_time, "spliced @", splice_point)
+                    b_chunk = [f"#EXTINF:{round(segment.end - splice_point,6)}"]
+                    b_start = splice_point
+                    self._add_split_segment(b_chunk, b_media, b_start)
                 return
-        self.scte35.mk_cue_state()
-
         self._add_segment_tags(segment)
-        self.add_segment(segment)
+        self._add_segment(segment)
         self._pop(segment)
 
-    def add_segment(self, segment):
+    def _add_segment(self, segment):
         segments.append(segment)
         self._set_times(segment)
         self.first = False
@@ -516,7 +503,6 @@ class NP:
     def write_m3u8(self):
         out = self.mk_uri(self.output, self.outfile)
         with open(out, "w", encoding="utf8") as npm3u8:
-            
             for k, v in self.headers.items():
                 if v is None:
                     npm3u8.write(f"{k}\n")
@@ -525,9 +511,13 @@ class NP:
             for segment in segments:
                 stanza = segment.as_stanza()
                 _ = [npm3u8.write(j + "\n") for j in stanza]
-        time.sleep(segments[-1].duration *0.9)         
-  #      if "#EXT-X-TARGETDURATION" in self.headers:
-     #       time.sleep(self.headers["#EXT-X-TARGETDURATION"] - 1)
+        segment = segments[-1]
+        seg = segment.relative_uri.rsplit("/", 1)[-1]
+        print(
+            f" proc: {self.args.output_dir[-1]}  media: {seg}\tstart: {segment.start}\tduration: {segment.duration}"
+        )
+        throttle = segments[-1].duration * 0.90
+        time.sleep(throttle)
 
     def load_sidecar(self):
         """
@@ -612,8 +602,6 @@ class NP:
             if ":" in tag:
                 kay, vee = tag.split(":", 1)
             segment.add_tag(kay, vee)
-        #  print(f"{segment.media}   {kay} {vee}")
-        # print(segment.tags)
 
     def _chk_cue_time(self):
         if self.scte35.cue:
@@ -687,38 +675,7 @@ def npmp_run(manifest, dir_name, rendition_sidecar=None):
 
 def do(args):
     """
-    do runs umzz programmatically.
-    Use like this:
-
-    from umzz import do, argue
-
-    args =argue()
-
-    args.input = "/home/a/slow/master.m3u8"
-    args.live = True
-    args.replay = True
-    args.sidecar_file="sidecar.txt"
-    args.output_dir = "out-stuff"
-
-    do(args)
-
-    set any command line options
-    programmatically with args.
-    Here are the defaults returned from argue() .
-
-    input='master.m3u8',
-    continue_m3u8=False,
-    delete=False,
-    live=False,
-    no_discontinuity=False,
-    output_dir='.',
-    program_date_time=False,
-    replay=False,
-    sidecar_file=None,
-    shulga=False,
-    time=2,
-    hls_tag='x_cue',
-    window_size=5,
+    do runs np programmatically.
 
     """
     fu = M3uFu(shush=True)
