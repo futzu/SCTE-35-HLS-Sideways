@@ -1,13 +1,11 @@
 """
-np.py
+sideways.py
 """
 import argparse
 from collections import deque
-import json
 import os
 import sys
 import time
-import pyaes
 from operator import itemgetter
 import multiprocessing as mp
 
@@ -16,16 +14,13 @@ from m3ufu import (
     AESDecrypt,
     TagParser,
     HEADER_TAGS,
-    BASIC_TAGS,
-    MULTI_TAGS,
-    MEDIA_TAGS,
 )
 import threefive
 from threefive import Cue
 from new_reader import reader
 from iframes import IFramer
-from x9k3 import X9K3, SCTE35
-from umzz import UMZZ, do
+from x9k3 import SCTE35
+from umzz import UMZZ
 from splitstream import SplitStream
 
 """
@@ -39,7 +34,7 @@ version you have installed.
 
 MAJOR = "0"
 MINOR = "0"
-MAINTAINENCE = "09"
+MAINTAINENCE = "03"
 
 
 ON = "\033[1m"
@@ -144,7 +139,6 @@ class Segment:
     def _get_pts_start(self):
         iframer = IFramer(shush=True)
         pts_start = iframer.first(self.media)
-        #   print(pts_start)
         if pts_start:
             self.pts = round(pts_start, 6)
 
@@ -171,32 +165,45 @@ class Segment:
                 self.tags["#EXTINF"] = self.tags["#EXTINF"].rsplit(",", 1)[0]
             self.duration = round(float(self.tags["#EXTINF"]), 6)
 
-    def _scte35(self):
+    def _ext_x_scte35(self):
         if "#EXT-X-SCTE35" in self.tags:
             if "CUE" in self.tags["#EXT-X-SCTE35"]:
                 self.cue = self.tags["#EXT-X-SCTE35"]["CUE"]
                 if "CUE-OUT" in self.tags["#EXT-X-SCTE35"]:
                     if self.tags["#EXT-X-SCTE35"]["CUE-OUT"] == "YES":
                         self._do_cue()
-                if "#EXT-X-CUE-OUT" in self.tags:
-                    self._do_cue()
+
+    def _ext_x_daterange(self):
         if "#EXT-X-DATERANGE" in self.tags:
             if "SCTE35-OUT" in self.tags["#EXT-X-DATERANGE"]:
                 self.cue = self.tags["#EXT-X-DATERANGE"]["SCTE35-OUT"]
                 self._do_cue()
-                return
+
+    def _ext_x_oatcls(self):
         if "#EXT-OATCLS-SCTE35" in self.tags:
             self.cue = self.tags["#EXT-OATCLS-SCTE35"]
             if isinstance(self.cue, dict):
                 self.cue = self.cue.popitem()[0]
             self._do_cue()
-            return
+
+    def _ext_x_cue_out(self):
+        if "#EXT-X-CUE-OUT" in self.tags:
+            self._do_cue()
+
+    def _ext_x_cue_out_cont(self):
         if "#EXT-X-CUE-OUT-CONT" in self.tags:
             try:
                 self.cue = self.tags["#EXT-X-CUE-OUT-CONT"]["SCTE35"]
                 self._do_cue()
             except:
                 pass
+
+    def _scte35(self):
+        self._ext_x_scte35()
+        self._ext_x_cue_out()
+        self._ext_x_daterange()
+        self._ext_x_oatcls()
+        self._ext_x_cue_out_cont()
 
     def _do_cue(self):
         """
@@ -207,6 +214,7 @@ class Segment:
             try:
                 tf = threefive.Cue(self.cue)
                 tf.decode()
+                tf.show()
                 self.cue_data = tf.get()
             except:
                 pass
@@ -232,7 +240,7 @@ class Segment:
         self.tags = TagParser(self.lines).tags
         self._chk_aes()
         self._extinf()
-        self._scte35()
+        # self._scte35()
         if self.first:
             self._get_pts_start()
             if self.pts:
@@ -276,19 +284,16 @@ class Segment:
         return stanza
 
 
-class NP:
+class Sideways:
     """
-    Ultra Mega Zoom Zoom no parse edition.
+    Sideways injects SCTE-35 into HLS.
     """
 
     def __init__(self, args):
         self.base_uri = ""
         self.sidecar = deque()
         self.sidecar_file = "sidecar.txt"
-        self.next_expected = 0
-        self.hls_time = 0.0
-        self.desegment = False
-        self.master = None
+        self.discontinuity_sequence=0
         self.reload = True
         self.m3u8 = None
         self.manifest = None
@@ -318,6 +323,17 @@ class NP:
     def _args_sidecar(self):
         self.sidecar_file = self.args.sidecar
 
+    def _args_hls_tag(self):
+        tag_map = {
+            "x_scte35": self.scte35.x_scte35,
+            "x_cue": self.scte35.x_cue,
+            "x_daterange": self.scte35.x_daterange,
+            "x_splicepoint": self.scte35.x_splicepoint,
+        }
+        if self.args.hls_tag not in tag_map:
+            raise ValueError(f"hls tag  must be in {tag_map.keys()}")
+        self.scte35.tag_method = tag_map[self.args.hls_tag]
+
     def _apply_args(self):
         """
         _apply_args  uses command line args
@@ -327,6 +343,7 @@ class NP:
         self._args_input()
         self._args_output()
         self._args_sidecar()
+        self._args_hls_tag()
 
     @staticmethod
     def _clean_line(line):
@@ -353,13 +370,14 @@ class NP:
         if not self.start:
             self.start = 0.0
         self.start += segment.duration
-        self.next_expected = self.start  # + self.hls_time
-        self.next_expected += round(segment.duration, 6)
-        self.hls_time += segment.duration
+
+    ##        self.next_expected = self.start  # + self.hls_time
+    ##        self.next_expected += round(segment.duration, 6)
+    ##        self.hls_time += segment.duration
 
     def _add_segment_tags(self, segment):
         self._add_cue_tag(segment)
-        segment.add_tag("# start", f" {segment.start} cue: {self.scte35.cue_time}")
+        segment.add_tag("# start", f" {segment.start} ")
         if segment.tmp:
             os.unlink(segment.tmp)
             del segment.tmp
@@ -390,12 +408,13 @@ class NP:
         )
         segment.decode()
         self._chk_sidecar_cues(segment)
-        self.scte35.chk_cue_state() # leave this here.
+        self.scte35.chk_cue_state()  # leave this here.
 
         if self.scte35.cue_time:
             if (segment.start) < self.scte35.cue_time < (segment.end):
-                print(segment.start, "CUE", self.scte35.cue_time)
-                print("SPLIT")
+                print(
+                    f"{ON}proc: {self.args.output_dir[-1]} -> Splitting Segment {segment.media}{OFF}"
+                )
                 self.chunk = []
                 stream = SplitStream()
                 splice_point, a_media, b_media = stream.split_at(
@@ -405,7 +424,6 @@ class NP:
                 a_start = segment.start
                 self._add_split_segment(a_chunk, a_media, a_start)
                 if splice_point:
-                    print(self.scte35.cue_time, "spliced @", splice_point)
                     b_chunk = [f"#EXTINF:{round(segment.end - splice_point,6)}"]
                     b_start = splice_point
                     self._add_split_segment(b_chunk, b_media, b_start)
@@ -514,7 +532,7 @@ class NP:
         segment = segments[-1]
         seg = segment.relative_uri.rsplit("/", 1)[-1]
         print(
-            f" proc: {self.args.output_dir[-1]}  media: {seg}\tstart: {segment.start}\tduration: {segment.duration}"
+            f" {ON}proc: {self.args.output_dir[-1]}{OFF} media: {seg}\tstart: {segment.start}\tduration: {segment.duration}"
         )
         throttle = segments[-1].duration * 0.90
         time.sleep(throttle)
@@ -534,14 +552,16 @@ class NP:
                 for line in sidelines:
                     line = line.decode().strip().split("#", 1)[0]
                     if line:
-                        print(f"{ON}loading  {line}{OFF}")
+                        print(
+                            f"{ON}proc: {self.args.output_dir[-1]} -> loading  {line}{OFF}"
+                        )
                         time.sleep(0.1)
                         if float(line.split(",", 1)[0]) == 0.0:
                             line = f'{self.start},{line.split(",",1)[1]}'
                         self.add2sidecar(line)
                 sidefile.close()
                 self.last_sidelines = sidelines
-        #   self.clobber_file(self.args.sidecar_file)
+            # self.clobber_file(self.args.sidecar_file)
 
     def add2sidecar(self, line):
         """
@@ -565,12 +585,16 @@ class NP:
                 splice_cue = s[1]
                 if splice_pts:
                     if (segment.start) < splice_pts < segment.end:
-                        print("SPLICE TIME", splice_pts)
+                        print(
+                            f"{ON}proc: {self.args.output_dir[-1]} -> SPLICE TIME: {splice_pts}{OFF}"
+                        )
                         self.sidecar.remove(s)
                         self.scte35.cue = Cue(splice_cue)
                         self.scte35.cue.decode()
                         # self.scte35.cue_time = splice_pts
-                        print(f"{self.scte35.cue.command.name}")
+                        print(
+                            f"{ON}proc: {self.args.output_dir[-1]} -> {self.scte35.cue.command.name}{OFF}"
+                        )
                         self._chk_cue_time()
 
     def _disco_seq_plus_one(self):
@@ -647,29 +671,28 @@ class UMZZnp(UMZZ):
             args=(m3u8, dir_name, rendition_sidecar),
         )
         p.start()
-        print(f"Rendition Process Started {dir_name}")
+        print(f"{ON}Rendition Process Started {dir_name}{OFF}")
         self.procs.append(p)
 
 
 def mk_npmp(manifest, dir_name, rendition_sidecar):
     """
-    mk_x9mp generates an X9MP instance and
+    mk_npmp generates an Sideways instance and
     sets default values
     """
-    np = NP(argue())
-    np.args.output_dir = dir_name
-    np.args.input = manifest.media
-    np.args.sidecar = rendition_sidecar
-    return np
+    sway = Sideways(argue())
+    sway.args.output_dir = dir_name
+    sway.args.input = manifest.media
+    sway.args.sidecar = rendition_sidecar
+    return sway
 
 
 def npmp_run(manifest, dir_name, rendition_sidecar=None):
     """
     mp_run is the process started for each rendition.
     """
-    args = argue()
-    np = mk_npmp(manifest, dir_name, rendition_sidecar)
-    np.decode()
+    sway = mk_npmp(manifest, dir_name, rendition_sidecar)
+    sway.decode()
     return False
 
 
@@ -718,7 +741,12 @@ def argue():
         default=".",
         help=" output directory ",
     )
-
+    parser.add_argument(
+        "-t",
+        "--hls_tag",
+        default="x_cue",
+        help=f"x_scte35, x_cue, x_daterange, or x_splicepoint   [default:{ON}x_cue{OFF}]",
+    )
     parser.add_argument(
         "-v",
         "--version",
