@@ -40,4 +40,3 @@ class SplitStream(IFramer):
                                 outfile = b
                         outfile.write(pkt)
         return splice_point, a_media, b_media
-
