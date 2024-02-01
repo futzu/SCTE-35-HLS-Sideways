@@ -21,7 +21,7 @@ from new_reader import reader
 from iframes import IFramer
 from x9k3 import SCTE35
 from umzz import UMZZ
-from splitstream import SplitStream
+from .splitstream import SplitStream
 
 """
 Odd number versions are releases.
@@ -34,7 +34,7 @@ version you have installed.
 
 MAJOR = "0"
 MINOR = "0"
-MAINTAINENCE = "11"
+MAINTAINENCE = "15"
 
 
 ON = "\033[1m"
@@ -762,6 +762,9 @@ def cli():
 
     """
     args = argue()
+    if args.version:
+        print(version())
+        sys.exit()
     _ = {print(k, "=", v) for k, v in vars(args).items()}
     do(args)
 
