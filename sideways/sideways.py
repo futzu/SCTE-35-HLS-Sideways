@@ -34,7 +34,7 @@ version you have installed.
 
 MAJOR = "0"
 MINOR = "0"
-MAINTAINENCE = "09"
+MAINTAINENCE = "11"
 
 
 ON = "\033[1m"
