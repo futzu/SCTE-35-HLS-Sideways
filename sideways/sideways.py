@@ -21,7 +21,7 @@ from new_reader import reader
 from iframes import IFramer
 from x9k3 import SCTE35
 from umzz import UMZZ
-from .splitstream import SplitStream
+from splitstream import SplitStream
 
 """
 Odd number versions are releases.
@@ -34,7 +34,7 @@ version you have installed.
 
 MAJOR = "0"
 MINOR = "0"
-MAINTAINENCE = "15"
+MAINTAINENCE = "17"
 
 
 ON = "\033[1m"
@@ -44,9 +44,6 @@ REV = "\033[7m"
 NORM = "\033[27m"
 
 ROLLOVER = 8589934591
-
-media_list = deque()
-segments = deque()
 
 
 def version():
@@ -141,6 +138,7 @@ class Segment:
         pts_start = iframer.first(self.media)
         if pts_start:
             self.pts = round(pts_start, 6)
+        print("PTS:", self.pts)
 
         self.start = self.pts
 
@@ -293,7 +291,7 @@ class Sideways:
         self.base_uri = ""
         self.sidecar = deque()
         self.sidecar_file = "sidecar.txt"
-        self.discontinuity_sequence=0
+        self.discontinuity_sequence = 0
         self.reload = True
         self.m3u8 = None
         self.manifest = None
@@ -307,6 +305,8 @@ class Sideways:
         self.scte35 = SCTE35()
         self.last_sidelines = None
         self.args = args
+        self.segments = deque()
+        self.media_list = deque()
 
     def _args_version(self):
         if self.args.version:
@@ -380,13 +380,13 @@ class Sideways:
 
     def _pop(self, media):
         popped = None
-        if media not in media_list:
-            media_list.append(media)
-            while len(media_list) > self.window_size:
-                popped = media_list.popleft()
+        if media not in self.media_list:
+            self.media_list.append(media)
+            while len(self.media_list) > self.window_size:
+                popped = self.media_list.popleft()
                 del popped
-            while len(segments) > self.window_size:
-                popped = segments.popleft()
+            while len(self.segments) > self.window_size:
+                popped = self.segments.popleft()
                 del popped
 
     def _add_split_segment(self, chunk, media, start):
@@ -394,9 +394,8 @@ class Sideways:
         sp_seg.decode()
         self._add_segment_tags(sp_seg)
         self._add_segment(sp_seg)
-        media_list.append(media)
+        self.media_list.append(media)
         self.chunk = []
-        self.scte35.mk_cue_state()
 
     def _add_media(self, media):
         segment = Segment(
@@ -404,13 +403,10 @@ class Sideways:
         )
         segment.decode()
         self._chk_sidecar_cues(segment)
-        self.scte35.chk_cue_state()  # leave this here.
-
         if self.scte35.cue_time:
             if (segment.start) < self.scte35.cue_time < (segment.end):
-                print(
-                    f"{ON}proc: {self.args.output_dir[-1]} -> Splitting Segment {segment.media}{OFF}"
-                )
+                print(segment.start, "CUE", self.scte35.cue_time)
+                print("SPLIT")
                 self.chunk = []
                 stream = SplitStream()
                 splice_point, a_media, b_media = stream.split_at(
@@ -419,19 +415,25 @@ class Sideways:
                 a_chunk = [f"#EXTINF:{round(self.scte35.cue_time - segment.start,6)}"]
                 a_start = segment.start
                 self._add_split_segment(a_chunk, a_media, a_start)
-                if splice_point:
-                    b_chunk = [f"#EXTINF:{round(segment.end - splice_point,6)}"]
-                    b_start = splice_point
-                    self._add_split_segment(b_chunk, b_media, b_start)
+                print(self.scte35.cue_time, "spliced @", splice_point)
+                b_chunk = [f"#EXTINF:{round(segment.end - self.scte35.cue_time,6)}"]
+                b_start = self.scte35.cue_time
+                self.scte35.mk_cue_state()  # leave this here.
+                self._add_split_segment(b_chunk, b_media, b_start)
                 return
+        self.scte35.chk_cue_state()
         self._add_segment_tags(segment)
         self._add_segment(segment)
         self._pop(segment)
 
     def _add_segment(self, segment):
-        segments.append(segment)
+        self.segments.append(segment)
         self._set_times(segment)
         self.first = False
+        print(
+            f" {ON}proc: {self.args.output_dir[-1]}{OFF} media: {segment.relative_uri.rsplit('/')[-1]}\tstart: {segment.start}\tduration: {segment.duration}"
+        )
+
         if self.scte35.break_timer is not None:
             self.scte35.break_timer += segment.duration
         self._pop(segment)
@@ -441,7 +443,7 @@ class Sideways:
         if self.base_uri not in line:
             if "http" not in line:
                 media = self.base_uri + media
-        if media not in media_list:
+        if media not in self.media_list:
             self._add_media(media)
         self.chunk = []
 
@@ -495,6 +497,11 @@ class Sideways:
     def _get_window_size(self, m3u8_lines):
         self.window_size = len([line for line in m3u8_lines if b"#EXTINF:" in line])
 
+    def modulo_media(self):
+        mod = 10 + int(self.args.output_dir[-1])
+        if self.headers["#EXT-X-MEDIA-SEQUENCE"] % mod == 0:
+            self.first = True
+
     def decode(self):
         self._apply_args()
         if self.m3u8:
@@ -503,6 +510,7 @@ class Sideways:
                 self.base_uri = f"{based[0]}/"
         while self.reload:
             self.read_m3u8()
+            #   self.modulo_media()
             self.write_m3u8()
 
     def read_m3u8(self):
@@ -522,15 +530,11 @@ class Sideways:
                     npm3u8.write(f"{k}\n")
                 else:
                     npm3u8.write(f"{k}:{v}\n")
-            for segment in segments:
+            for segment in self.segments:
                 stanza = segment.as_stanza()
                 _ = [npm3u8.write(j + "\n") for j in stanza]
-        segment = segments[-1]
-        seg = segment.relative_uri.rsplit("/", 1)[-1]
-        print(
-            f" {ON}proc: {self.args.output_dir[-1]}{OFF} media: {seg}\tstart: {segment.start}\tduration: {segment.duration}"
-        )
-        throttle = segments[-1].duration * 0.90
+
+        throttle = self.segments[-1].duration * 0.97
         time.sleep(throttle)
 
     def load_sidecar(self):
