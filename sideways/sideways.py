@@ -21,7 +21,7 @@ from new_reader import reader
 from iframes import IFramer
 from x9k3 import SCTE35
 from umzz import UMZZ
-from splitstream import SplitStream
+from .splitstream import SplitStream
 
 """
 Odd number versions are releases.
