@@ -16,7 +16,6 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/futzu/sideways",
     packages=setuptools.find_packages(),
-    py_modules=["sideways"],
     scripts=['bin/sideways'],
     install_requires=[
         "iframes >= 0.0.7",
