@@ -21,7 +21,7 @@ from new_reader import reader
 from iframes import IFramer
 from x9k3 import SCTE35
 from umzz import UMZZ
-from .splitstream import SplitStream
+from splitstream import SplitStream
 
 """
 Odd number versions are releases.
@@ -34,7 +34,7 @@ version you have installed.
 
 MAJOR = "0"
 MINOR = "0"
-MAINTAINENCE = "03"
+MAINTAINENCE = "09"
 
 
 ON = "\033[1m"
@@ -371,10 +371,6 @@ class Sideways:
             self.start = 0.0
         self.start += segment.duration
 
-    ##        self.next_expected = self.start  # + self.hls_time
-    ##        self.next_expected += round(segment.duration, 6)
-    ##        self.hls_time += segment.duration
-
     def _add_segment_tags(self, segment):
         self._add_cue_tag(segment)
         segment.add_tag("# start", f" {segment.start} ")
@@ -591,7 +587,6 @@ class Sideways:
                         self.sidecar.remove(s)
                         self.scte35.cue = Cue(splice_cue)
                         self.scte35.cue.decode()
-                        # self.scte35.cue_time = splice_pts
                         print(
                             f"{ON}proc: {self.args.output_dir[-1]} -> {self.scte35.cue.command.name}{OFF}"
                         )
@@ -722,30 +717,27 @@ def argue():
         "-i",
         "--input",
         default=None,
-        help=""" Input source, like "/home/a/vid.ts"
-                                or "udp://@235.35.3.5:3535"
-                                or "https://futzu.com/xaa.ts"
-                                """,
+        help=f"Input source, is a master.m3u8(local or http(s) with MPEGTS segments  default: {ON}None{OFF}",
     )
 
     parser.add_argument(
         "-s",
         "--sidecar_file",
         default=None,
-        help=f"Sidecar file of SCTE-35 (pts,cue) pairs   [default:{ON}None{OFF}]",
+        help=f"SCTE-35 Sidecar file default: {ON}None{OFF}",
     )
 
     parser.add_argument(
         "-o",
         "--output_dir",
         default=".",
-        help=" output directory ",
+        help=f" output directory default:{ON}None{OFF}",
     )
     parser.add_argument(
         "-t",
         "--hls_tag",
         default="x_cue",
-        help=f"x_scte35, x_cue, x_daterange, or x_splicepoint   [default:{ON}x_cue{OFF}]",
+        help=f"x_scte35, x_cue, x_daterange, or x_splicepoint  default: {ON}x_cue{OFF}",
     )
     parser.add_argument(
         "-v",
