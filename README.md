@@ -17,7 +17,7 @@ Sideways :
 #### Version 0.0.19 is out! _(massive improvement)_
 
 
-```lua
+```js
 #EXTM3U
 #EXT-X-VERSION:4
 #EXT-X-TARGETDURATION:7    <--- headers and settings are copied over.
@@ -56,11 +56,11 @@ https://example.com/0/seg545.ts   <--- back to not parsing segments
 # How to Use
 ## Install
 ```js
-python3 -mpip install sidewwwys
+python3 -mpip install sideways
 ```
 ## Cli tool 
 
-```lua
+```js
 a@fu:~$ sideways -h
 usage: sideways [-h] [-i INPUT] [-s SIDECAR_FILE] [-o OUTPUT_DIR] [-t HLS_TAG]
                 [-v]
@@ -80,15 +80,15 @@ options:
   -v, --version         Show version
 ```
 
-* -i Input is a master.m3u8, local or over a network via http(s)
-* -s the sidecar file with  PTS,Cue pairs. [Sidecar File details](#sidecar)
-* -o Output is a directory on your system, the default is the current directory.
+* `-i` Input is a master.m3u8, local or over a network via http(s)
+* `-s` the sidecar file with  PTS,Cue pairs. [Sidecar File details](#sidecar)
+* `-o` Output is a directory on your system, the default is the current directory.
    * The new master.m3u8 is written to the output directory. 
    * Each rendition has a numerical subdirectory, starting a 0.
       * rendition sub-directories have an index.m3u8
       *  When segments are split for SCTE-35 splice points, the split segments are stored in the rendition subdiectory.
 
-* -t HLS_TAG has been lightly tested. The default x_cue works well, I havent really tested the others.
+* `-t` HLS_TAG has been lightly tested. The default x_cue works well, I havent really tested the others.
 
 # Running:
 * the sidecar file contains two lines, a CUE-OUT and a CUE-IN, the  ad break is for 17 seconds.
@@ -98,12 +98,12 @@ options:
 ```
 * the command
 
-```lua
+```js
 a@fu:~/testme$ sideways -i /home/a/foam4/master.m3u8 -s ../sidecar.txt
 ```
 
 * the output
-```smalltalk
+```js
 a@fu:~/testme$ ls -R
 .:
 0  1  master.m3u8
@@ -119,7 +119,7 @@ a-seg544.ts  a-seg547.ts  b-seg544.ts  b-seg547.ts  index.m3u8  sidecar.txt
 * sideways  writes a copy of the sidecar to each rendition directory
 * you can play the master.m3u8.
 * the SCTE-35 Cues come out like this:
-```smalltalk
+```js
 # start: 3268.266667 
 #EXTINF:5.733333
 ./0/a-seg544.ts     <-- seg544.ts is split into a-seg544.ts and b-seg544.ts.
