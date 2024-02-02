@@ -5,35 +5,16 @@ HLS SCTE-35 Injection via sidecar file
 
 ### <s>There has got to be a better way.</s> This is the better way.
 
+This is SCTE-35 injection for live ABR HLS mostly through manifest manipulation.
 
-Inject SCTE-35 from a sidecar file,<br> on the fly, <br>
-into live ABR  HLS streams, 
-<br>
-over a network, make it easy, <br>
-and keep CPU usage to a minimum.<br>
+Sideways :
+* takes aa master.m3u8 file (local or over https) as input.
+* reads SCTE-35 data from a sidecar file
+* The master. m3u8 and rendition index.m3u8 files are rewritten locally on your server with SCTE-35 Added to them.
+* The only segments that are downloaded are segments with a CUE-OUT or CUE-IN tag in them, they are split at the SCTE-35 splicepoint.
+* It's fast, light on the network, and uses very little CPU time. 
 
-
-#### Version 0.0.17 is out! _( wear a helmet, it might be a little buggy)_
-
-
-* read the master.m3u8 and copy it locally.
-    * change the rendition URIs to the new local index.m3u8 files.
-* load SCTE-35 from a sidecar file for all renditions, just like umzz.
-* spawn a process for each rendition and do the following:
-  *  throttle for live output, just like x9k3.
-  * read the index.m3u8 all HLS options defined by the index.m3u8.
-  *  and write a new one according to these rules.
-  * if this the first segment or a segment with a DISCO tag, parse out PTS from the segment.
-      * otherwise just add the duration the the first PTS. 
-  * for every other segment,find the start iframe only. (This is needed due to rounding of segment times causing time drift)
-    * copy over the index.m3u8 data for the segment,
-    * change the segment path to the full URI, seg1.ts becomes https://example.com/seg1.ts
-
-### When there are SCTE-35 cues
-* if the ad break starts in the middle of a segment:
-  * parse the segment, and split it into two pieces to match the SCTE-35 splice point.
-  * replace the original segment with the 2 local split segments in the new index.m3u8.
-  *  add CONT cue tags to the manifests as needed, but don't parse any other segment until you have a CUE-IN event.
+#### Version 0.0.19 is out! _(massive improvement)_
 
 
 ```lua
