@@ -9,7 +9,7 @@ This is SCTE-35 injection for live ABR HLS mostly through manifest manipulation.
 
 Sideways :
 * takes aa master.m3u8 file (local or over https) as input.
-* reads SCTE-35 data from a sidecar file
+* reads SCTE-35 data from a [sidecar file](#sidecar-files)
 * The master. m3u8 and rendition index.m3u8 files are rewritten locally on your server with SCTE-35 Added to them.
 * The only segments that are downloaded are segments with a CUE-OUT or CUE-IN tag in them, they are split at the SCTE-35 splicepoint.
 * It's fast, light on the network, and uses very little CPU time. 
@@ -19,8 +19,8 @@ Sideways :
 
 ```js
 #EXTM3U
-#EXT-X-VERSION:4
-#EXT-X-TARGETDURATION:7    <--- headers and settings are copied over.
+#EXT-X-VERSION:4      <--- headers and settings are copied over.
+#EXT-X-TARGETDURATION:7   
 #EXTINF:6.0
 https://example.com/0/seg541.ts    <-- expands existing segment URI, but doesn't parse the segments
 #EXTINF:0.266667
@@ -34,13 +34,13 @@ https://example.com/0/seg541.ts    <-- expands existing segment URI, but doesn't
 https://example.com/0/seg543.ts     <--- during  the ad break, the segments are not parsed, URIs are expanded.
 #EXT-X-CUE-OUT-CONT:11.466666/13.0
 #EXTINF:1.533334
-./0/a-seg544.ts             <-- split on the CUE-IN splice point       
+./0/a-seg544.ts            
 #EXT-X-CUE-IN            
 #EXT-X-DISCONTINUITY
 #EXTINF:4.199999
-./0/b-seg544.ts    <--- CUE IN on the second split segment 
+./0/b-seg544.ts   
 #EXTINF:6.0
-https://example.com/0/seg545.ts   <--- back to not parsing segments
+https://example.com/0/seg545.ts   
 
 ```
 * The new master.m3u8 is written to your server
@@ -81,7 +81,7 @@ options:
 ```
 
 * `-i` Input is a master.m3u8, local or over a network via http(s)
-* `-s` the sidecar file with  PTS,Cue pairs. [Sidecar File details](#sidecar)
+* `-s` the sidecar file with  PTS,Cue pairs. [Sidecar File details](#sidecar-files)
 * `-o` Output is a directory on your system, the default is the current directory.
    * The new master.m3u8 is written to the output directory. 
    * Each rendition has a numerical subdirectory, starting a 0.
@@ -91,7 +91,7 @@ options:
 * `-t` HLS_TAG has been lightly tested. The default x_cue works well, I havent really tested the others.
 
 # Running:
-* the sidecar file contains two lines, a CUE-OUT and a CUE-IN, the  ad break is for 17 seconds.
+* the [sidecar file](#sidecar-files) contains two lines, a CUE-OUT and a CUE-IN, the  ad break is for 17 seconds.
 ```smalltalk
 3274.0,/DAlAAAAAAAAAP/wFAUAAAABf+/+EZAnoP4AF1iQAAEAAAAAE5sHRg==
 3291.0,/DAgAAAAAAAAAP/wDwUAAAABf0/+EaeAMAABAAAAAJlXlzg=
