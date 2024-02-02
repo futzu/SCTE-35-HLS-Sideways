@@ -77,7 +77,7 @@ class Segment:
     and associated data
     """
 
-    def __init__(self, lines, media_uri, start, base_uri, first):
+    def __init__(self, lines, media_uri, start, base_uri,first):
         self.lines = lines
         self.media = media_uri
         self.pts = 0
@@ -133,13 +133,19 @@ class Segment:
 
         return {k: b2l(v) for k, v in data.items() if v}
 
+    def _extinf(self):
+        if "#EXTINF" in self.tags:
+            if isinstance(self.tags["#EXTINF"], str):
+                self.tags["#EXTINF"] = self.tags["#EXTINF"].rsplit(",", 1)[0]
+            self.duration = round(float(self.tags["#EXTINF"]), 6)
+
+
     def _get_pts_start(self):
         iframer = IFramer(shush=True)
         pts_start = iframer.first(self.media)
         if pts_start:
             self.pts = round(pts_start, 6)
         print("PTS:", self.pts)
-
         self.start = self.pts
 
     def media_file(self):
@@ -151,71 +157,6 @@ class Segment:
         if self.tmp:
             media_file = self.tmp
         return media_file
-
-    def cue2sidecar(self, sidecar):
-        if self.cue:
-            with open(sidecar, "a") as out:
-                out.write(f"{self.start},{self.cue}\n")
-
-    def _extinf(self):
-        if "#EXTINF" in self.tags:
-            if isinstance(self.tags["#EXTINF"], str):
-                self.tags["#EXTINF"] = self.tags["#EXTINF"].rsplit(",", 1)[0]
-            self.duration = round(float(self.tags["#EXTINF"]), 6)
-
-    def _ext_x_scte35(self):
-        if "#EXT-X-SCTE35" in self.tags:
-            if "CUE" in self.tags["#EXT-X-SCTE35"]:
-                self.cue = self.tags["#EXT-X-SCTE35"]["CUE"]
-                if "CUE-OUT" in self.tags["#EXT-X-SCTE35"]:
-                    if self.tags["#EXT-X-SCTE35"]["CUE-OUT"] == "YES":
-                        self._do_cue()
-
-    def _ext_x_daterange(self):
-        if "#EXT-X-DATERANGE" in self.tags:
-            if "SCTE35-OUT" in self.tags["#EXT-X-DATERANGE"]:
-                self.cue = self.tags["#EXT-X-DATERANGE"]["SCTE35-OUT"]
-                self._do_cue()
-
-    def _ext_x_oatcls(self):
-        if "#EXT-OATCLS-SCTE35" in self.tags:
-            self.cue = self.tags["#EXT-OATCLS-SCTE35"]
-            if isinstance(self.cue, dict):
-                self.cue = self.cue.popitem()[0]
-            self._do_cue()
-
-    def _ext_x_cue_out(self):
-        if "#EXT-X-CUE-OUT" in self.tags:
-            self._do_cue()
-
-    def _ext_x_cue_out_cont(self):
-        if "#EXT-X-CUE-OUT-CONT" in self.tags:
-            try:
-                self.cue = self.tags["#EXT-X-CUE-OUT-CONT"]["SCTE35"]
-                self._do_cue()
-            except:
-                pass
-
-    def _scte35(self):
-        self._ext_x_scte35()
-        self._ext_x_cue_out()
-        self._ext_x_daterange()
-        self._ext_x_oatcls()
-        self._ext_x_cue_out_cont()
-
-    def _do_cue(self):
-        """
-        _do_cue parses a SCTE-35 encoded string
-        via the threefive.Cue class
-        """
-        if self.cue:
-            try:
-                tf = threefive.Cue(self.cue)
-                tf.decode()
-                tf.show()
-                self.cue_data = tf.get()
-            except:
-                pass
 
     def _chk_aes(self):
         if "#EXT-X-KEY" in self.tags:
@@ -238,20 +179,10 @@ class Segment:
         self.tags = TagParser(self.lines).tags
         self._chk_aes()
         self._extinf()
-        # self._scte35()
-##        if self.first:
-##            self._get_pts_start()
-##            if self.pts:
-##                self.start = self.pts
-##        else:
-        ifr =IFramer()
-        self.start = ifr.first(self.media)
+        self._get_pts_start()
         if self.start:
             self.start = round(self.start, 6)
             self.end = round(self.start + self.duration, 6)
-        else:
-            self.start = 0
-        # del self.lines
         return self.start
 
     def get_lines(self):
@@ -397,7 +328,7 @@ class Sideways:
         sp_seg.decode()
         self._add_segment_tags(sp_seg)
         self._add_segment(sp_seg)
-        self.media_list.append(segment.media)
+        self.media_list.append(sp_seg.media)
         self.chunk = []
 
     def _add_media(self, media):
@@ -446,8 +377,6 @@ class Sideways:
             if "http" not in line:
                 media = self.base_uri + media
         if media not in self.media_list:
-            print(media, "MEDIA")
-            print("MEDIA_LIST", self.media_list)
             self._add_media(media)
         self.chunk = []
 
@@ -765,7 +694,7 @@ def cli():
     for running shari with command line args
     Two lines of code gives you a full umzz command line tool.
 
-     from sideways import cli
+     from umzz import cli
      cli()
 
     """
