@@ -1,8 +1,8 @@
+### <s>There has got to be a better way.</s> 
+## This is the better way.
 
 ### Sideways is SCTE-35 Injection for live ABR HLS 
 
-### <s>There has got to be a better way.</s> 
-## This is the better way.
 
 * Input is a master.m3u8 file,local or over http(s), as input.
 * SCTE-35 data is from a [sidecar file](#sidecar-files).
