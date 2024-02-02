@@ -15,6 +15,7 @@ and keep CPU usage to a minimum.<br>
 
 #### Version 0.0.17 is out! _( wear a helmet, it might be a little buggy)_
 
+![image](https://github.com/futzu/SCTE-35-HLS-Sideways/assets/52701496/0818f26e-1a13-4b31-bdbc-5c4ff79c9b74)
 
 * read the master.m3u8 and copy it locally.
     * change the rendition URIs to the new local index.m3u8 files.
@@ -25,7 +26,7 @@ and keep CPU usage to a minimum.<br>
   *  and write a new one according to these rules.
   * if this the first segment or a segment with a DISCO tag, parse out PTS from the segment.
       * otherwise just add the duration the the first PTS. 
-  * for every other segment, don't read the raw segment, no parse.
+  * for every other segment,find the start iframe only. (This is needed due to rounding of segment times causing time drift)
     * copy over the index.m3u8 data for the segment,
     * change the segment path to the full URI, seg1.ts becomes https://example.com/seg1.ts
 
