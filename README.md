@@ -2,15 +2,11 @@
 # Sideways
 _np was already taken on pypi_ 
 HLS SCTE-35 Injection via sidecar file
-
 # <s>There has got to be a better way.</s> 
 # This is the better way.
-
-## Update: it's working.
-
-
-
 <br>
+
+### Version 0.0.17 is out! _( wear a helmet, it might be a little buggy)_
 
 Inject SCTE-35 from a sidecar file, on the fly, 
 into live ABR  HLS streams,
@@ -19,8 +15,6 @@ over a network, make it easy,
 and keep CPU usage to a minimum.
 
 <br>
-
-
 
 * read the master.m3u8 and copy it locally.
     * change the rendition URIs to the new local index.m3u8 files.
@@ -79,6 +73,12 @@ https://example.com/0/seg545.ts   <--- back to not parsing segments
   index.m3u8 sidecar.txt
 ```
 # How to Use
+## Install
+```js
+python3 -mpip install sidewwwys
+```
+## Cli tool 
+
 ```lua
 a@fu:~$ sideways -h
 usage: sideways [-h] [-i INPUT] [-s SIDECAR_FILE] [-o OUTPUT_DIR] [-t HLS_TAG]
@@ -99,9 +99,76 @@ options:
   -v, --version         Show version
 ```
 
+* -i Input is a master.m3u8, local or over a network via http(s)
+* -s the sidecar file with  PTS,Cue pairs. [Sidecar File details](#sidecar)
+* -o Output is a directory on your system, the default is the current directory.
+   * The new master.m3u8 is written to the output directory. 
+   * Each rendition has a numerical subdirectory, starting a 0.
+      * rendition sub-directories have an index.m3u8
+      *  When segments are split for SCTE-35 splice points, the split segments are stored in the rendition subdiectory.
+
+* -t HLS_TAG has been lightly tested. The default x_cue works well, I havent really tested the others.
+
+# Running:
+* the sidecar file contains two lines, a CUE-OUT and a CUE-IN, the  ad break is for 17 seconds.
+```smalltalk
+3274.0,/DAlAAAAAAAAAP/wFAUAAAABf+/+EZAnoP4AF1iQAAEAAAAAE5sHRg==
+3291.0,/DAgAAAAAAAAAP/wDwUAAAABf0/+EaeAMAABAAAAAJlXlzg=
+```
+* the command
+
+```lua
+a@fu:~/testme$ sideways -i /home/a/foam4/master.m3u8 -s ../sidecar.txt
+```
+
+* the output
+```smalltalk
+a@fu:~/testme$ ls -R
+.:
+0  1  master.m3u8
+
+./0:
+a-seg544.ts  a-seg547.ts  b-seg544.ts  b-seg547.ts  index.m3u8  sidecar.txt
+
+./1:
+a-seg544.ts  a-seg547.ts  b-seg544.ts  b-seg547.ts  index.m3u8  sidecar.txt
+```
+* 0 and 1 are renditon sub-directories.
+* When a segment is split for SCTE-35 the name is prepended with a- and b-
+* sideways  writes a copy of the sidecar to each rendition directory
+* you can play the master.m3u8.
+* the SCTE-35 Cues come out like this:
+```smalltalk
+# start: 3268.266667 
+#EXTINF:5.733333
+./0/a-seg544.ts     <-- seg544.ts is split into a-seg544.ts and b-seg544.ts.
+# start: 3274.0 
+#EXT-X-CUE-OUT:17.0
+#EXT-X-DISCONTINUITY
+#EXTINF:0.266667
+./0/b-seg544.ts <-- The splice point is always at the start of b- segment.
+# start: 3274.266667 
+#EXT-X-CUE-OUT-CONT:0.266667/17.0
+#EXTINF:6.0
+/home/a/foam4/0/seg545.ts  
+# start: 3280.266667 
+#EXT-X-CUE-OUT-CONT:6.266667/17.0
+#EXTINF:6.0
+/home/a/foam4/0/seg546.ts
+# start: 3286.266667 
+#EXT-X-CUE-OUT-CONT:12.266667/17.0
+#EXTINF:4.733333
+./0/a-seg547.ts
+# start: 3291.0 
+#EXT-X-CUE-IN
+#EXT-X-DISCONTINUITY
+#EXTINF:1.266667
+./0/b-seg547.ts
+# start: 3292.266667 
+```   
 
 
-### Sidecar files
+### Sidecar
 * load scte35 cues from a Sidecar file
 
 * Sidecar Cues will be handled the same as SCTE35 cues from a video stream.
@@ -124,29 +191,7 @@ sideways -i master.m3u8 -s sidecar.txt -o bob
 ```lua
 printf '38103.868589, /DAxAAAAAAAAAP/wFAUAAABdf+/+zHRtOn4Ae6DOAAAAAAAMAQpDVUVJsZ8xMjEqLYemJQ==\n' > sidecar.txt
 ```
-* Sidecar files can now accept 0 as the PTS insert time for Splice Immediate.
 
-* Specify 0 as the insert time, the cue will be insert at the start of the next segment. 
-```lua
-printf '0,/DAhAAAAAAAAAP/wEAUAAAAJf78A/gASZvAACQAAAACokv3z\n' > sidecar.txt
-```
 * A CUE-OUT can be terminated early using a sidecar file.
 
-In the middle of a CUE-OUT send a splice insert with the out_of_network_indicator flag not set and the splice immediate flag set. Do the steps above , and then do this
-<br>
-```lua
-printf '0,/DAcAAAAAAAAAP/wCwUAAAABfx8AAAEAAAAA3r8DiQ==\n' > sidecar.txt
-```
-* It will cause the CUE-OUT to end at the next segment start.
-```
-#EXT-X-CUE-OUT 13.4
-./seg5.ts:	start:112.966667	end:114.966667	duration:2.233334
-#EXT-X-CUE-OUT-CONT 2.233334/13.4
-./seg6.ts:	start:114.966667	end:116.966667	duration:2.1
-#EXT-X-CUE-OUT-CONT 4.333334/13.4
-./seg7.ts:	start:116.966667	end:118.966667	duration:2.0
-#EXT-X-CUE-OUT-CONT 6.333334/13.4
-./seg8.ts:	start:117.0	        end:119.0	duration:0.033333
-#EXT-X-CUE-IN None
-./seg9.ts:	start:119.3	        end:121.3	duration:2.3
-```
+
