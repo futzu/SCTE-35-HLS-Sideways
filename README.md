@@ -1,20 +1,20 @@
 
-# Sideways
-<br>
+### Sideways
+
 HLS SCTE-35 Injection via sidecar file
-# <s>There has got to be a better way.</s> 
-# This is the better way.
-<br>
 
-### Version 0.0.17 is out! _( wear a helmet, it might be a little buggy)_
+### <s>There has got to be a better way.</s> This is the better way.
 
-Inject SCTE-35 from a sidecar file, on the fly, 
-into live ABR  HLS streams,
-<br>
-over a network, make it easy, 
-and keep CPU usage to a minimum.
 
+Inject SCTE-35 from a sidecar file,<br> on the fly, <br>
+into live ABR  HLS streams, 
 <br>
+over a network, make it easy, <br>
+and keep CPU usage to a minimum.<br>
+
+
+#### Version 0.0.17 is out! _( wear a helmet, it might be a little buggy)_
+
 
 * read the master.m3u8 and copy it locally.
     * change the rendition URIs to the new local index.m3u8 files.
