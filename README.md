@@ -15,7 +15,6 @@ and keep CPU usage to a minimum.<br>
 
 #### Version 0.0.17 is out! _( wear a helmet, it might be a little buggy)_
 
-![image](https://github.com/futzu/SCTE-35-HLS-Sideways/assets/52701496/0818f26e-1a13-4b31-bdbc-5c4ff79c9b74)
 
 * read the master.m3u8 and copy it locally.
     * change the rendition URIs to the new local index.m3u8 files.
