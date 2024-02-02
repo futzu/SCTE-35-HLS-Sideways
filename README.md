@@ -2,15 +2,15 @@
 ### Sideways is SCTE-35 Injection for live ABR HLS 
 
 ### <s>There has got to be a better way.</s> 
-### This is the better way.
+## This is the better way.
 
-* takes a master.m3u8 file (local or over https) as input.
-* reads SCTE-35 data from a [sidecar file](#sidecar-files)
+* Input is a master.m3u8 file,local or over http(s), as input.
+* SCTE-35 data is from a [sidecar file](#sidecar-files).
 * The master. m3u8 and rendition index.m3u8 files are rewritten locally on your server with SCTE-35 Added to them.
-* The only segments that are downloaded are segments with a CUE-OUT or CUE-IN tag in them, they are split at the SCTE-35 splicepoint.
+* Segments with a CUE-OUT or CUE-IN tag in them, they are split at the SCTE-35 splicepoint.
 * It's fast, light on the network, and uses very little CPU time. 
 
-
+---
 ```js
 #EXTM3U
 #EXT-X-VERSION:4      <--- headers and settings are copied over.
