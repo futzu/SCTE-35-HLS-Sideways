@@ -21,7 +21,7 @@ from new_reader import reader
 from iframes import IFramer
 from x9k3 import SCTE35
 from umzz import UMZZ
-from splitstream import SplitStream
+from .splitstream import SplitStream
 
 """
 Odd number versions are releases.
@@ -34,7 +34,7 @@ version you have installed.
 
 MAJOR = "0"
 MINOR = "0"
-MAINTAINENCE = "17"
+MAINTAINENCE = "19"
 
 
 ON = "\033[1m"
@@ -239,10 +239,13 @@ class Segment:
         self._chk_aes()
         self._extinf()
         # self._scte35()
-        if self.first:
-            self._get_pts_start()
-            if self.pts:
-                self.start = self.pts
+##        if self.first:
+##            self._get_pts_start()
+##            if self.pts:
+##                self.start = self.pts
+##        else:
+        ifr =IFramer()
+        self.start = ifr.first(self.media)
         if self.start:
             self.start = round(self.start, 6)
             self.end = round(self.start + self.duration, 6)
@@ -394,7 +397,7 @@ class Sideways:
         sp_seg.decode()
         self._add_segment_tags(sp_seg)
         self._add_segment(sp_seg)
-        self.media_list.append(media)
+        self.media_list.append(segment.media)
         self.chunk = []
 
     def _add_media(self, media):
@@ -424,7 +427,6 @@ class Sideways:
         self.scte35.chk_cue_state()
         self._add_segment_tags(segment)
         self._add_segment(segment)
-        self._pop(segment)
 
     def _add_segment(self, segment):
         self.segments.append(segment)
@@ -436,7 +438,7 @@ class Sideways:
 
         if self.scte35.break_timer is not None:
             self.scte35.break_timer += segment.duration
-        self._pop(segment)
+        self._pop(segment.media)
 
     def _do_media(self, line):
         media = line
@@ -444,6 +446,8 @@ class Sideways:
             if "http" not in line:
                 media = self.base_uri + media
         if media not in self.media_list:
+            print(media, "MEDIA")
+            print("MEDIA_LIST", self.media_list)
             self._add_media(media)
         self.chunk = []
 
@@ -510,7 +514,7 @@ class Sideways:
                 self.base_uri = f"{based[0]}/"
         while self.reload:
             self.read_m3u8()
-            #   self.modulo_media()
+         #   self.modulo_media()
             self.write_m3u8()
 
     def read_m3u8(self):
@@ -534,7 +538,7 @@ class Sideways:
                 stanza = segment.as_stanza()
                 _ = [npm3u8.write(j + "\n") for j in stanza]
 
-        throttle = self.segments[-1].duration * 0.97
+        throttle = self.segments[-1].duration * 0.9
         time.sleep(throttle)
 
     def load_sidecar(self):
@@ -761,7 +765,7 @@ def cli():
     for running shari with command line args
     Two lines of code gives you a full umzz command line tool.
 
-     from umzz import cli
+     from sideways import cli
      cli()
 
     """
