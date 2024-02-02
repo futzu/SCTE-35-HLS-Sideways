@@ -149,7 +149,7 @@ a-seg544.ts  a-seg547.ts  b-seg544.ts  b-seg547.ts  index.m3u8  sidecar.txt
 ```   
 
 
-### Sidecar
+### Sidecar files
 * load scte35 cues from a Sidecar file
 
 * Sidecar Cues will be handled the same as SCTE35 cues from a video stream.
