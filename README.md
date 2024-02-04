@@ -82,7 +82,7 @@ options:
       * rendition sub-directories have an index.m3u8
       *  When segments are split for SCTE-35 splice points, the split segments are stored in the rendition subdiectory.
 
-* `-t` HLS_TAG has been lightly tested. The default x_cue works well, I havent really tested the others.
+* `-T` HLS_TAG has been lightly tested. The default x_cue works well, x_daterange works too. I havent really tested the others.
 
 # Running:
 * the [sidecar file](#sidecar-files) contains two lines, a CUE-OUT and a CUE-IN, the  ad break is for 17 seconds.
