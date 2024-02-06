@@ -1,8 +1,10 @@
-### <s>There has got to be a better way.</s> 
+#### You haven't seen this before. [Online SCTE-35 encoder](https://iodisco.com/cgi-bin/scte35encoder) 
+
+
+## <s>There has got to be a better way.</s> 
 ## This is the better way.
 
 ### Sideways is SCTE-35 Injection for live ABR HLS 
-
 
 * Input is a master.m3u8 file,local or over http(s), as input.
 * SCTE-35 data is from a [sidecar file](#sidecar-files).
