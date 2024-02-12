@@ -71,6 +71,59 @@ def atoif(value):
             return value
 
 
+
+class AacParser:
+    applehead = b"com.apple.streaming.transportStreamTimestamp"
+
+    @staticmethod
+    def is_header(header):
+        """
+        is_header tests aac and ac3 files for ID3 headers.
+        """
+        if header[:3] == b"ID3":
+            return True
+        return False
+
+    @staticmethod
+    def id3_len(header):
+        """
+        id3_len parses the length value from ID3 headers
+        """
+        id3len = int.from_bytes(header[6:], byteorder="big")
+        return id3len
+
+    @staticmethod
+    def syncsafe5(somebytes):
+        """
+        syncsafe5 parses PTS from ID3 tags.
+        """
+        lsb = len(somebytes) - 1
+        syncd = 0
+        for idx, b in enumerate(somebytes):
+            syncd += b << ((lsb - idx) << 3)
+        return round(syncd / 90000.0, 6)
+
+    def parse(self, media):
+        """
+        aac_pts parses the ID3 header tags in aac and ac3 audio files
+        """
+        aac = reader(media)
+        header = aac.read(10)
+        if self.is_header(header):
+            id3len = self.id3_len(header)
+            data = aac.read(id3len)
+            pts = 0
+            if self.applehead in data:
+                try:
+                    pts = float(data.split(self.applehead)[1].split(b"\x00", 2)[1])
+                except:
+                    pts = self.syncsafe5(data.split(self.applehead)[1][:9])
+                finally:
+                    self.first_segment = False
+                    return round((pts % ROLLOVER), 6)
+
+
+
 class Segment:
     """
     The Segment class represents a segment
@@ -141,11 +194,16 @@ class Segment:
 
 
     def _get_pts_start(self):
-        iframer = IFramer(shush=True)
-        pts_start = iframer.first(self.media)
+        pts_start = None
+        if '.aac' in self.media:
+            ap = AacParser()
+            pts_start = ap.parse(self.media)
+        else:
+            iframer = IFramer(shush=True)
+            pts_start = iframer.first(self.media)
         if pts_start:
             self.pts = round(pts_start, 6)
-        print("PTS:", self.pts)
+       # print("PTS:", self.pts)
         self.start = self.pts
 
     def media_file(self):
@@ -326,6 +384,7 @@ class Sideways:
     def _add_split_segment(self, chunk, media, start):
         sp_seg = Segment(chunk, media, start, self.args.output_dir, self.first)
         sp_seg.decode()
+        sp_seg.media =sp_seg.media.rsplit('/',1)[-1]
         self._add_segment_tags(sp_seg)
         self._add_segment(sp_seg)
         self.media_list.append(sp_seg.media)
@@ -337,6 +396,7 @@ class Sideways:
         )
         segment.decode()
         self._chk_sidecar_cues(segment)
+      #  self.scte35.mk_cue_state()  # leave this here.
         if self.scte35.cue_time:
             if (segment.start) < self.scte35.cue_time < (segment.end):
                 print(segment.start, "CUE", self.scte35.cue_time)
@@ -349,13 +409,17 @@ class Sideways:
                 a_chunk = [f"#EXTINF:{round(self.scte35.cue_time - segment.start,6)}"]
                 a_start = segment.start
                 self._add_split_segment(a_chunk, a_media, a_start)
+               # self.write_m3u8()
+                #self.scte35.mk_cue_state()
                 print(self.scte35.cue_time, "spliced @", splice_point)
                 b_chunk = [f"#EXTINF:{round(segment.end - self.scte35.cue_time,6)}"]
                 b_start = self.scte35.cue_time
-                self.scte35.mk_cue_state()  # leave this here.
+                self.scte35.chk_cue_state()
+                self.scte35.mk_cue_state()
                 self._add_split_segment(b_chunk, b_media, b_start)
                 return
         self.scte35.chk_cue_state()
+        self.scte35.mk_cue_state()
         self._add_segment_tags(segment)
         self._add_segment(segment)
 
@@ -363,10 +427,11 @@ class Sideways:
         self.segments.append(segment)
         self._set_times(segment)
         self.first = False
-        print(
-            f" {ON}proc: {self.args.output_dir[-1]}{OFF} media: {segment.relative_uri.rsplit('/')[-1]}\tstart: {segment.start}\tduration: {segment.duration}"
-        )
-
+        p = f' {ON}{self.pnum()}{OFF} '
+        m = f"media: {segment.relative_uri.rsplit('/')[-1]}\t"
+        s = f'start: {segment.start}\t'
+        d = f'duration: {segment.duration}'
+        print(f'{p}{m}{s}{d}')
         if self.scte35.break_timer is not None:
             self.scte35.break_timer += segment.duration
         self._pop(segment.media)
@@ -403,24 +468,12 @@ class Sideways:
         if "ENDLIST" in line:
             self.reload = False
 
-    def _disco_chk(self, line):
-        """
-        _disco_chk sets self.first when it sees a segment
-        with a discontinuity tag.
-
-        setting self.first causes np to
-        parse a segment for pts.
-        """
-        if "#EXT-X-DISCONTINUITY" in line:
-            self.first = True
-
     def _parse_line(self, line):
         if not line:
             return False
         line = self._clean_line(line)
         self._endlist_chk(line)
         if not self._parse_header(line):
-            self._disco_chk(line)
             self.chunk.append(line)
             if line[0] != "#":
                 if len(line):
@@ -428,12 +481,9 @@ class Sideways:
         return True
 
     def _get_window_size(self, m3u8_lines):
-        self.window_size = len([line for line in m3u8_lines if b"#EXTINF:" in line])
-
-    def modulo_media(self):
-        mod = 10 + int(self.args.output_dir[-1])
-        if self.headers["#EXT-X-MEDIA-SEQUENCE"] % mod == 0:
-            self.first = True
+        exf= b"#EXTINF:"
+        ws = [line for line in m3u8_lines if exf in line]
+        self.window_size = len(ws)
 
     def decode(self):
         self._apply_args()
@@ -443,7 +493,6 @@ class Sideways:
                 self.base_uri = f"{based[0]}/"
         while self.reload:
             self.read_m3u8()
-         #   self.modulo_media()
             self.write_m3u8()
 
     def read_m3u8(self):
@@ -466,9 +515,23 @@ class Sideways:
             for segment in self.segments:
                 stanza = segment.as_stanza()
                 _ = [npm3u8.write(j + "\n") for j in stanza]
-
-        throttle = self.segments[-1].duration * 0.9
+        throttle = self.segments[-1].duration * 0.97
         time.sleep(throttle)
+
+    @staticmethod
+    def clobber_file(the_file):
+        """
+        clobber_file  blanks the_file
+        """
+        with open(the_file, "w", encoding="utf8") as clobbered:
+            clobbered.close()
+
+    def pnum(self):
+        """
+        pnum returns the internal process number
+        for the rendition process
+        """
+        return f"{ON}proc: {self.args.output_dir[-1]}"
 
     def load_sidecar(self):
         """
@@ -485,16 +548,14 @@ class Sideways:
                 for line in sidelines:
                     line = line.decode().strip().split("#", 1)[0]
                     if line:
-                        print(
-                            f"{ON}proc: {self.args.output_dir[-1]} -> loading  {line}{OFF}"
-                        )
-                        time.sleep(0.1)
+                        print(f"{self.pnum()} -> loading  {line}{OFF}")
                         if float(line.split(",", 1)[0]) == 0.0:
                             line = f'{self.start},{line.split(",",1)[1]}'
                         self.add2sidecar(line)
                 sidefile.close()
                 self.last_sidelines = sidelines
-            # self.clobber_file(self.args.sidecar_file)
+            self.clobber_file(self.sidecar_file)
+
 
     def add2sidecar(self, line):
         """
@@ -517,15 +578,17 @@ class Sideways:
                 splice_pts = float(s[0])
                 splice_cue = s[1]
                 if splice_pts:
-                    if (segment.start) < splice_pts < segment.end:
+                    half =segment.duration/2
+                    if (segment.start -half) <= splice_pts <= (segment.start + half):
                         print(
-                            f"{ON}proc: {self.args.output_dir[-1]} -> SPLICE TIME: {splice_pts}{OFF}"
+                            f"{ON}{self.pnum()}-> SPLICE TIME: {splice_pts} ACTUAL:{segment.start}{OFF}"
                         )
+                        print(f'{self.pnum()} {REV}SPLICE DIFF: {round(segment.start -splice_pts,6)}{NORM}')
                         self.sidecar.remove(s)
                         self.scte35.cue = Cue(splice_cue)
                         self.scte35.cue.decode()
                         print(
-                            f"{ON}proc: {self.args.output_dir[-1]} -> {self.scte35.cue.command.name}{OFF}"
+                            f"{ON}{self.pnum()}  -> {self.scte35.cue.command.name}{OFF}"
                         )
                         self._chk_cue_time()
 
@@ -590,8 +653,6 @@ class Sideways:
 
 
 class UMZZnp(UMZZ):
-    def __init__(self, m3u8_list):
-        super().__init__(m3u8_list)
 
     def add_rendition(self, m3u8, dir_name, rendition_sidecar=None):
         """
@@ -630,7 +691,7 @@ def npmp_run(manifest, dir_name, rendition_sidecar=None):
 
 def do(args):
     """
-    do runs np programmatically.
+    do runs sideways programmatically.
 
     """
     fu = M3uFu(shush=True)
@@ -656,14 +717,12 @@ def argue():
         default=None,
         help=f"Input source, is a master.m3u8(local or http(s) with MPEGTS segments  default: {ON}None{OFF}",
     )
-
     parser.add_argument(
         "-s",
         "--sidecar_file",
         default=None,
         help=f"SCTE-35 Sidecar file default: {ON}None{OFF}",
     )
-
     parser.add_argument(
         "-o",
         "--output_dir",
@@ -671,7 +730,7 @@ def argue():
         help=f" output directory default:{ON}None{OFF}",
     )
     parser.add_argument(
-        "-t",
+        "-T",
         "--hls_tag",
         default="x_cue",
         help=f"x_scte35, x_cue, x_daterange, or x_splicepoint  default: {ON}x_cue{OFF}",
