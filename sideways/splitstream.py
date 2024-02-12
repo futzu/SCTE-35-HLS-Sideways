@@ -23,8 +23,8 @@ class SplitStream(IFramer):
     def split_at(self, segment, pts, output_dir):
         splice_point = None
         seg = segment.rsplit("/")[-1]
-        a_name = f"a-{seg}"
-        b_name = f"b-{seg}"
+        a_name = f"a-{seg.split('?')[0]}"
+        b_name = f"b-{seg.split('?')[0]}"
         a_media = self.mk_uri(output_dir, a_name)
         b_media = self.mk_uri(output_dir, b_name)
         with open(a_media, "wb") as a:
