@@ -2,7 +2,7 @@
 ## This is the better way.
 
 # Sideways is SCTE-35 Injection for live ABR HLS 
-## Latest Version is `0`.`0`.`21` _released 02/13/2024_
+## Latest Version is `0`.`0`.`23` _released 02/13/2024_
 * Input is a master.m3u8 file,local or over http(s), as input.
 * SCTE-35 data is from a [sidecar file](#sidecar-files).
 * The master. m3u8 and rendition index.m3u8 files are rewritten locally on your server with SCTE-35 Added to them.
