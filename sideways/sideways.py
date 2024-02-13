@@ -4,6 +4,7 @@ sideways.py
 
 import argparse
 from collections import deque
+import datetime
 import os
 import sys
 import time
@@ -34,7 +35,7 @@ version you have installed.
 
 MAJOR = "0"
 MINOR = "0"
-MAINTAINENCE = "21"
+MAINTAINENCE = "23"
 
 
 ON = "\033[1m"
@@ -361,7 +362,7 @@ class SCTE35:
         """
         #EXT-X-SCTE35
         """
-        base = f'#EXT-X-SCTE35:CUE="{self.cue.encode()}" '
+        base = f'#EXT-X-SCTE35:CUE="{self.cue.encode()}"'
         if self.cue_state == "OUT":
             return f"{base},CUE-OUT=YES "
         if self.cue_state == "IN":
