@@ -1,6 +1,7 @@
 """
 sideways.py
 """
+
 import argparse
 from collections import deque
 import os
@@ -19,7 +20,6 @@ import threefive
 from threefive import Cue
 from new_reader import reader
 from iframes import IFramer
-from x9k3 import SCTE35
 from umzz import UMZZ
 from .splitstream import SplitStream
 
@@ -34,7 +34,7 @@ version you have installed.
 
 MAJOR = "0"
 MINOR = "0"
-MAINTAINENCE = "19"
+MAINTAINENCE = "21"
 
 
 ON = "\033[1m"
@@ -69,7 +69,6 @@ def atoif(value):
             value = int(value)
         finally:
             return value
-
 
 
 class AacParser:
@@ -123,14 +122,13 @@ class AacParser:
                     return round((pts % ROLLOVER), 6)
 
 
-
 class Segment:
     """
     The Segment class represents a segment
     and associated data
     """
 
-    def __init__(self, lines, media_uri, start, base_uri,first):
+    def __init__(self, lines, media_uri, start, base_uri, first):
         self.lines = lines
         self.media = media_uri
         self.pts = 0
@@ -192,10 +190,9 @@ class Segment:
                 self.tags["#EXTINF"] = self.tags["#EXTINF"].rsplit(",", 1)[0]
             self.duration = round(float(self.tags["#EXTINF"]), 6)
 
-
     def _get_pts_start(self):
         pts_start = None
-        if '.aac' in self.media:
+        if ".aac" in self.media:
             ap = AacParser()
             pts_start = ap.parse(self.media)
         else:
@@ -203,7 +200,6 @@ class Segment:
             pts_start = iframer.first(self.media)
         if pts_start:
             self.pts = round(pts_start, 6)
-       # print("PTS:", self.pts)
         self.start = self.pts
 
     def media_file(self):
@@ -272,6 +268,190 @@ class Segment:
         stanza = [x.replace(":None", "").replace(":{}", "") for x in stanza]
         stanza.append(self.media)
         return stanza
+
+
+class SCTE35:
+    """
+    A SCTE35 instance is used to hold
+    SCTE35 cue data by X9K5.
+    """
+
+    def __init__(self):
+        self.cue = None
+        self.cue_state = None
+        self.cue_time = None
+        self.tag_method = self.x_cue
+        self.break_timer = None
+        self.break_duration = None
+        self.event_id = 1
+        self.seg_type = None
+
+    def mk_cue_tag(self):
+        """
+        mk_cue_tag routes hls tag creation
+        """
+        tag = False
+        if self.cue:
+            tag = self.tag_method()
+        return tag
+
+    def chk_cue_state(self):
+        """
+        chk_cue_state changes self.cue_state
+        """
+        if self.cue_state == "OUT":
+            self.cue_state = "CONT"
+        if self.cue_state == "IN":
+            self.cue_time = None
+            self.cue = None
+            self.cue_state = None
+            self.break_timer = None
+
+    def mk_cue_state(self):
+        """
+        mk_cue_state checks if the cue
+        is a CUE-OUT or a CUE-IN and
+        sets cue_state.
+        """
+
+        if self.cue_state == None:
+            if self.is_cue_out(self.cue):
+                self.cue_state = "OUT"
+                self.break_timer = 0.0
+
+        elif self.cue_state == "OUT":
+            self.cue_state = "CONT"
+
+        elif self.cue_state in ["OUT", "CONT"]:
+            if self.cue_time and self.break_duration:
+                self.cue_time += self.break_duration
+            if self.is_cue_in(self.cue):
+                self.cue_state = "IN"
+
+        elif self.cue_state == "IN":
+            self.cue_time = None
+            self.cue = None
+            self.cue_state = None
+            self.break_timer = None
+
+    def x_cue(self):
+        """
+        #EXT-X-CUE-( OUT | IN | CONT )
+        """
+        if self.cue_state == "OUT":
+            return f"#EXT-X-CUE-OUT:{self.break_duration}"
+        if self.cue_state == "IN":
+            return "#EXT-X-CUE-IN"
+        if self.cue_state == "CONT":
+            return f"#EXT-X-CUE-OUT-CONT:{self.break_timer:.6f}/{self.break_duration}"
+        return False
+
+    def x_splicepoint(self):
+        """
+        #EXT-X-SPLICEPOINT-SCTE35
+        """
+        base = f"#EXT-X-SPLICEPOINT-SCTE35:{self.cue.encode()}"
+        if self.cue_state == "OUT":
+            return f"{base}"
+        if self.cue_state == "IN":
+            return f"{base}"
+        return False
+
+    def x_scte35(self):
+        """
+        #EXT-X-SCTE35
+        """
+        base = f'#EXT-X-SCTE35:CUE="{self.cue.encode()}" '
+        if self.cue_state == "OUT":
+            return f"{base},CUE-OUT=YES "
+        if self.cue_state == "IN":
+            return f"{base},CUE-IN=YES "
+        if self.cue_state == "CONT":
+            return f"{base},CUE-OUT=CONT"
+        return False
+
+    def x_daterange(self):
+        """
+        #EXT-X-DATERANGE
+        """
+        fbase = f'#EXT-X-DATERANGE:ID="{self.event_id}"'
+        iso8601 = f"{datetime.datetime.utcnow().isoformat()}Z"
+        fdur = ""
+        if self.break_duration:
+            fdur = f",PLANNED-DURATION={self.break_duration}"
+
+        if self.cue_state == "OUT":
+            fstart = f',START-DATE="{iso8601}"'
+            tag = f"{fbase}{fstart}{fdur},SCTE35-OUT={self.cue.encode_as_hex()}"
+            return tag
+
+        if self.cue_state == "IN":
+            fstop = f',END-DATE="{iso8601}"'
+            tag = f"{fbase}{fstop},SCTE35-IN={self.cue.encode_as_hex()}"
+            self.event_id += 1
+            return tag
+        return False
+
+    def _splice_insert_cue_out(self, cue):
+        cmd = cue.command
+        if cmd.out_of_network_indicator:
+            if cmd.break_duration:
+                self.break_duration = cmd.break_duration
+            self.cue_state = "OUT"
+            return True
+        return False
+
+    def _time_signal_cue_out(self, cue):
+        seg_starts = [0x22, 0x30, 0x32, 0x34, 0x36, 0x44, 0x46]
+        for dsptr in cue.descriptors:
+            if dsptr.tag != 2:
+                return False
+            if dsptr.segmentation_type_id in seg_starts:
+                self.seg_type = dsptr.segmentation_type_id + 1
+                if dsptr.segmentation_duration:
+                    self.break_duration = dsptr.segmentation_duration
+                    self.cue_state = "OUT"
+                    return True
+        return False
+
+    def is_cue_out(self, cue):
+        """
+        is_cue_out checks a Cue instance
+        Returns True for a cue_out event.
+        """
+        if cue is None:
+            return False
+        if self.cue_state not in ["IN", None]:
+            return False
+        cmd = cue.command
+        if cmd.command_type == 5:
+            return self._splice_insert_cue_out(cue)
+        if cmd.command_type == 6:
+            return self._time_signal_cue_out(cue)
+
+        return False
+
+    def is_cue_in(self, cue):
+        """
+        is_cue_in checks a Cue instance
+        Returns True for a cue_in event.
+        """
+        if cue is None:
+            return False
+        if self.cue_state not in ["OUT", "CONT"]:
+            return False
+        cmd = cue.command
+        if cmd.command_type == 5:
+            if not cmd.out_of_network_indicator:
+                return True
+        if cmd.command_type == 6:
+            for dsptr in cue.descriptors:
+                if dsptr.tag == 2:
+                    if dsptr.segmentation_type_id == self.seg_type:
+                        self.seg_type = None
+                        self.cue_state = "IN"
+                        return True
+        return False
 
 
 class Sideways:
@@ -374,17 +554,17 @@ class Sideways:
         popped = None
         if media not in self.media_list:
             self.media_list.append(media)
-            while len(self.media_list) > self.window_size:
+            while len(self.media_list) == self.window_size:
                 popped = self.media_list.popleft()
                 del popped
-            while len(self.segments) > self.window_size:
+            while len(self.segments) == self.window_size:
                 popped = self.segments.popleft()
                 del popped
 
     def _add_split_segment(self, chunk, media, start):
         sp_seg = Segment(chunk, media, start, self.args.output_dir, self.first)
         sp_seg.decode()
-        sp_seg.media =sp_seg.media.rsplit('/',1)[-1]
+        sp_seg.media = sp_seg.media.rsplit("/", 1)[-1]
         self._add_segment_tags(sp_seg)
         self._add_segment(sp_seg)
         self.media_list.append(sp_seg.media)
@@ -396,29 +576,29 @@ class Sideways:
         )
         segment.decode()
         self._chk_sidecar_cues(segment)
-      #  self.scte35.mk_cue_state()  # leave this here.
         if self.scte35.cue_time:
             if (segment.start) < self.scte35.cue_time < (segment.end):
                 print(segment.start, "CUE", self.scte35.cue_time)
-                print("SPLIT")
                 self.chunk = []
                 stream = SplitStream()
                 splice_point, a_media, b_media = stream.split_at(
                     segment.media, self.scte35.cue_time, self.args.output_dir
                 )
-                a_chunk = [f"#EXTINF:{round(self.scte35.cue_time - segment.start,6)}"]
-                a_start = segment.start
-                self._add_split_segment(a_chunk, a_media, a_start)
-               # self.write_m3u8()
-                #self.scte35.mk_cue_state()
-                print(self.scte35.cue_time, "spliced @", splice_point)
-                b_chunk = [f"#EXTINF:{round(segment.end - self.scte35.cue_time,6)}"]
-                b_start = self.scte35.cue_time
-                self.scte35.chk_cue_state()
-                self.scte35.mk_cue_state()
-                self._add_split_segment(b_chunk, b_media, b_start)
-                return
-        self.scte35.chk_cue_state()
+                print("Splice Point @", splice_point, "Splitting Segment")
+                if splice_point:
+                    a_chunk = [
+                        f"#EXTINF:{round(self.scte35.cue_time - segment.start,6)}"
+                    ]
+                    a_start = segment.start
+                    self._add_split_segment(a_chunk, a_media, a_start)
+                    # self.write_m3u8()
+                    print(self.scte35.cue_time, "spliced @", splice_point)
+                    b_chunk = [f"#EXTINF:{round(segment.end - self.scte35.cue_time,6)}"]
+                    self.scte35.mk_cue_state()
+                    b_start = self.scte35.cue_time
+                    self._add_split_segment(b_chunk, b_media, b_start)
+                    self.scte35.cue_time = None
+                    return
         self.scte35.mk_cue_state()
         self._add_segment_tags(segment)
         self._add_segment(segment)
@@ -427,11 +607,11 @@ class Sideways:
         self.segments.append(segment)
         self._set_times(segment)
         self.first = False
-        p = f' {ON}{self.pnum()}{OFF} '
+        p = f" {ON}{self.pnum()}{OFF} "
         m = f"media: {segment.relative_uri.rsplit('/')[-1]}\t"
-        s = f'start: {segment.start}\t'
-        d = f'duration: {segment.duration}'
-        print(f'{p}{m}{s}{d}')
+        s = f"start: {segment.start}\t"
+        d = f"duration: {segment.duration}"
+        print(f"{p}{m}{s}{d}")
         if self.scte35.break_timer is not None:
             self.scte35.break_timer += segment.duration
         self._pop(segment.media)
@@ -481,7 +661,7 @@ class Sideways:
         return True
 
     def _get_window_size(self, m3u8_lines):
-        exf= b"#EXTINF:"
+        exf = b"#EXTINF:"
         ws = [line for line in m3u8_lines if exf in line]
         self.window_size = len(ws)
 
@@ -556,7 +736,6 @@ class Sideways:
                 self.last_sidelines = sidelines
             self.clobber_file(self.sidecar_file)
 
-
     def add2sidecar(self, line):
         """
         add2sidecar add insert_pts,cue to the deque
@@ -578,12 +757,15 @@ class Sideways:
                 splice_pts = float(s[0])
                 splice_cue = s[1]
                 if splice_pts:
-                    half =segment.duration/2
-                    if (segment.start -half) <= splice_pts <= (segment.start + half):
+                    # half =segment.duration/2
+                    # if (segment.start -half) <= splice_pts <= (segment.start + half):
+                    if segment.start <= splice_pts <= segment.end:
                         print(
                             f"{ON}{self.pnum()}-> SPLICE TIME: {splice_pts} ACTUAL:{segment.start}{OFF}"
                         )
-                        print(f'{self.pnum()} {REV}SPLICE DIFF: {round(segment.start -splice_pts,6)}{NORM}')
+                        print(
+                            f"{self.pnum()} {REV}SPLICE DIFF: {round(segment.start -splice_pts,6)}{NORM}"
+                        )
                         self.sidecar.remove(s)
                         self.scte35.cue = Cue(splice_cue)
                         self.scte35.cue.decode()
