@@ -1,17 +1,13 @@
-#### You haven't seen this before. [Online SCTE-35 encoder](https://iodisco.com/cgi-bin/scte35encoder) 
-
-
 ## <s>There has got to be a better way.</s> 
 ## This is the better way.
 
-### Sideways is SCTE-35 Injection for live ABR HLS 
-
+# Sideways is SCTE-35 Injection for live ABR HLS 
+## Latest Version is `0`.`0`.`21` _released 02/13/2024_
 * Input is a master.m3u8 file,local or over http(s), as input.
 * SCTE-35 data is from a [sidecar file](#sidecar-files).
 * The master. m3u8 and rendition index.m3u8 files are rewritten locally on your server with SCTE-35 Added to them.
 * Segments with a CUE-OUT or CUE-IN tag in them, they are split at the SCTE-35 splicepoint.
 * It's fast, light on the network, and uses very little CPU time. 
-
 ---
 ```js
 #EXTM3U
@@ -70,7 +66,7 @@ options:
                         SCTE-35 Sidecar file default: None
   -o OUTPUT_DIR, --output_dir OUTPUT_DIR
                         output directory default:None
-  -t HLS_TAG, --hls_tag HLS_TAG
+  -T HLS_TAG, --hls_tag HLS_TAG
                         x_scte35, x_cue, x_daterange, or x_splicepoint
                         default: x_cue
   -v, --version         Show version
