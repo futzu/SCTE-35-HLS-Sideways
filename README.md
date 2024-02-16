@@ -1,3 +1,7 @@
+### Heads up. This is no longer maintained. It's been fun, but it's time for me to go find a real job. ~ Adrian 02/15/2024
+
+
+
 ## <s>There has got to be a better way.</s> 
 ## This is the better way.
 
