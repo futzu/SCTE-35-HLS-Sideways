@@ -656,8 +656,8 @@ class Sideways:
         self._endlist_chk(line)
         if not self._parse_header(line):
             self.chunk.append(line)
-            if line[0] != "#":
-                if len(line):
+            if len(line):
+                if line[0] != "#":
                     self._do_media(line)
         return True
 
