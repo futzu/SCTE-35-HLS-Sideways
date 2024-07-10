@@ -51,6 +51,17 @@ https://example.com/0/seg545.ts
 ```js
 python3 -mpip install sideways
 ```
+
+## Heads up! upgrade threefive to  `2`.`4`.`55`
+```js
+python3 -mpip install --upgrade threefive
+```
+* and / or 
+```js
+pypy3 -mpip install --upgrade threefive
+```
+
+
 ## Cli tool 
 
 ```js
