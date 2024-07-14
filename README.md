@@ -178,6 +178,3 @@ printf '38103.868589, /DAxAAAAAAAAAP/wFAUAAABdf+/+zHRtOn4Ae6DOAAAAAAAMAQpDVUVJsZ
 ```
 
 * A CUE-OUT can be terminated early using a sidecar file.
-
-### Issues and Bugs and Feature requests are no longer being accepted. 
-Y'all have worn me out with questions.
